@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#161b1f">
+<title>改善提案 動画メーカー</title>
+<style>
+:root{
+  --paper:#eceee9; --card:#fff; --ink:#161b1f; --ink2:#3c464e; --muted:#6d7780;
+  --rule:#ccd1cb; --rule2:#e0e4de; --go:#1f7a4d; --go-bg:#e8f3ec;
+  --stamp:#b03a2b; --warn:#c2591b;
+  --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
+body{
+  background:var(--paper);color:var(--ink);
+  font-family:-apple-system,"Hiragino Sans","BIZ UDPGothic",sans-serif;
+  font-size:15px;line-height:1.6;display:flex;flex-direction:column;
+  -webkit-text-size-adjust:100%;
+}
+.mono{font-family:"SF Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+
+/* ═══ ヘッダ ═══ */
+header{
+  flex:0 0 auto;padding:calc(var(--sat) + 8px) 14px 8px;
+  background:var(--ink);color:#f0f2ee;display:flex;align-items:center;gap:10px;
+}
+header .t{font-size:14px;font-weight:600;letter-spacing:.04em}
+header .sp{flex:1}
+header button{
+  background:none;border:1px solid #3a444b;color:#c3cbd0;border-radius:6px;
+  padding:5px 11px;font-size:12px;
+}
+header button:active{background:#2a333a}
+
+/* ═══ 尺バー ═══ */
+.gauge{flex:0 0 auto;background:#dfe2dd;padding:7px 14px 8px;border-bottom:1px solid var(--rule)}
+.gline{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px}
+.gline b{font-weight:600;color:var(--ink);font-size:13px}
+.gline .over{color:var(--warn)}
+.gbar{position:relative;height:14px;background:#f4f5f2;border:1px solid var(--rule);border-radius:7px;overflow:hidden;display:flex}
+.gbar .sg{min-width:2px;border-right:1px solid rgba(255,255,255,.7)}
+.gbar .sg[data-k=photo]{background:#4f8f74}
+.gbar .sg[data-k=movie]{background:#2c6f8f}
+.gbar .sg[data-k=slide]{background:#97a09b}
+.gbar .sg[data-k=mute]{background:#c9cec8}
+.gbar .rest{flex:1}
+.gbar .lim{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--warn);opacity:.85}
+
+/* ═══ ページ送り ═══ */
+.pager{flex:0 0 auto;background:var(--paper);padding:8px 10px 4px;overflow-x:auto;
+  -webkit-overflow-scrolling:touch;white-space:nowrap;border-bottom:1px solid var(--rule2)}
+.pg{
+  display:inline-flex;flex-direction:column;align-items:center;gap:3px;width:52px;
+  background:none;border:none;padding:0;vertical-align:top;
+}
+.pg .d{
+  width:30px;height:30px;border-radius:50%;border:2px solid var(--rule);background:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--muted);
+}
+.pg .l{font-size:9.5px;color:var(--muted);line-height:1.2;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:52px}
+.pg[data-s=done] .d{border-color:var(--stamp);color:var(--stamp);background:#f7efed;font-size:11px}
+.pg[data-s=cur] .d{background:var(--go);border-color:var(--go);color:#fff;transform:scale(1.1)}
+.pg[data-s=cur] .l{color:var(--ink);font-weight:700}
+.pg.add .d{border-style:dashed;font-size:17px;font-weight:400}
+
+/* ═══ 本体 ═══ */
+.body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 14px}
+.slide{transition:transform .22s,opacity .22s}
+.slide.out{opacity:0;transform:translateX(-8%)}
+.slide.outR{opacity:0;transform:translateX(8%)}
+
+.head{display:flex;align-items:baseline;gap:9px;margin:0 0 8px 2px}
+.head h1{font-size:17px;margin:0;font-weight:700}
+.head .sub{font-size:11px;color:var(--muted)}
+
+/* 資料プレビュー */
+.paper{
+  width:100%;aspect-ratio:16/9;background:#fbfbf8;border:1px solid #b3b9b2;border-radius:6px;
+  display:block;box-shadow:0 2px 10px rgba(20,26,22,.12);
+}
+.tapzone{position:relative}
+.tapzone .hintbox{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;pointer-events:none;color:var(--muted);
+}
+.tapzone .hintbox .ic{font-size:30px;line-height:1}
+.tapzone .hintbox .tx{font-size:12.5px}
+.chgbtn{
+  position:absolute;right:7px;bottom:7px;background:rgba(22,27,31,.72);color:#fff;border:none;
+  border-radius:14px;padding:5px 13px;font-size:11.5px;backdrop-filter:blur(6px);
+}
+
+/* カード */
+.card{background:var(--card);border:1px solid var(--rule2);border-radius:8px;padding:12px;margin-top:10px}
+.card > h3{margin:0 0 9px;font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:600}
+label.f{display:block;margin-bottom:10px}
+label.f:last-child{margin-bottom:0}
+label.f > span{display:block;font-size:11.5px;color:var(--ink2);font-weight:600;margin-bottom:4px}
+label.f > span em{font-style:normal;font-weight:400;color:var(--muted);font-size:10.5px;margin-left:5px}
+input,textarea,select{
+  width:100%;background:#fff;border:1px solid var(--rule);border-radius:6px;padding:10px 11px;
+  -webkit-appearance:none;appearance:none;
+}
+select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--go);outline-offset:-2px;border-color:var(--go)}
+textarea{min-height:64px;resize:none;line-height:1.65}
+.show textarea{background:#fffdf5;border-color:#ddd5bd}
+.say textarea{background:#f4faf6;border-color:#c4ddd0}
+input[type=number],.num{font-family:"SF Mono",ui-monospace,monospace;text-align:right}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.g2 label.f{margin-bottom:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  flex:1;min-width:0;border:1px solid var(--rule);background:#fff;border-radius:7px;
+  padding:8px 4px;font-size:11.5px;text-align:center;color:var(--ink2);
+}
+.chip[aria-pressed=true]{background:var(--go-bg);border-color:var(--go);color:var(--go);font-weight:700}
+.hint{font-size:11.5px;color:var(--muted);line-height:1.7;margin:8px 0 0}
+.hint code{background:#eef0ec;padding:1px 5px;border-radius:3px;font-size:11px;user-select:all}
+.rowbtns{display:flex;gap:8px;margin-top:10px}
+.sm{flex:1;background:#fff;border:1px solid var(--rule);border-radius:7px;padding:9px 4px;font-size:12.5px;color:var(--ink2)}
+.sm:active{background:#f0f2ee}
+.sm.warn{color:var(--stamp);border-color:#e0c4bf}
+.formula{background:#f5f8f4;border:1px solid var(--rule2);border-left:3px solid var(--go);
+  border-radius:6px;padding:10px 12px;margin-top:10px}
+.formula .ln{font-size:11.5px;color:var(--ink2);margin-bottom:3px;font-family:"SF Mono",ui-monospace,monospace}
+.formula .amt{margin-top:7px;padding-top:7px;border-top:1px solid var(--rule2)}
+.formula .amt b{font-size:26px;font-weight:700;color:var(--go);font-family:"SF Mono",ui-monospace,monospace}
+.formula .amt span{font-size:11px;color:var(--muted);margin-left:6px}
+
+/* ═══ フッタ ═══ */
+footer{
+  flex:0 0 auto;background:var(--card);border-top:1px solid var(--rule);
+  padding:9px 12px calc(var(--sab) + 9px);display:flex;gap:9px;align-items:center;
+}
+.nb{flex:0 0 auto;background:#fff;border:1px solid var(--rule);border-radius:9px;padding:12px 18px;font-size:15px}
+.nb:disabled{opacity:.3}
+.nb.go{flex:1;background:var(--go);border-color:var(--go);color:#fff;font-weight:700}
+.nb.go:active{background:#186040}
+.nb.big{flex:1;background:var(--go);border-color:var(--go);color:#fff;font-weight:700;padding:14px}
+
+/* ═══ シート ═══ */
+.sheet{
+  position:fixed;inset:0;background:rgba(20,25,29,.5);z-index:50;display:flex;align-items:flex-end;
+  backdrop-filter:blur(2px);
+}
+.sheet[hidden]{display:none}
+.sheet > .in{
+  width:100%;max-height:88vh;background:var(--paper);border-radius:16px 16px 0 0;
+  padding:14px 14px calc(var(--sab) + 14px);overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.sheet h2{margin:0 0 12px;font-size:16px;display:flex;align-items:center}
+.sheet h2 button{margin-left:auto;background:none;border:none;color:var(--go);font-size:15px;padding:0}
+
+/* ═══ 書き出し ═══ */
+.run{position:fixed;inset:0;background:#12161ae8;z-index:60;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;padding:22px;gap:14px;color:#e8ecea;backdrop-filter:blur(4px)}
+.run[hidden]{display:none}
+.run .ttl{font-size:16px;font-weight:600}
+.run .ring{position:relative;width:132px;height:132px}
+.run .ring svg{transform:rotate(-90deg)}
+.run .ring .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:27px;font-weight:700;font-family:"SF Mono",ui-monospace,monospace}
+.run .st{font-size:13px;color:#a9b3b0;text-align:center;min-height:38px}
+.run .warn{font-size:11.5px;color:#e0a44e;text-align:center;max-width:290px;line-height:1.7}
+.run video{width:100%;max-width:420px;border-radius:8px;background:#000}
+.run .acts{display:flex;gap:8px;width:100%;max-width:420px}
+.run .acts button{padding:12px 4px;font-size:13px}
+.run .acts button{flex:1;padding:13px;border-radius:9px;border:1px solid #3a444b;background:#232b31;color:#e8ecea;font-size:14px}
+.run .acts button.p{background:var(--go);border-color:var(--go);color:#fff;font-weight:700}
+#lg{width:100%;max-width:420px;max-height:120px;overflow-y:auto;background:#0d1114;border-radius:7px;
+  padding:8px 10px;font-family:"SF Mono",ui-monospace,monospace;font-size:10.5px;line-height:1.7;color:#8f9a96}
+#lg .e{color:#e0776a} #lg .s{color:#6fce9e} #lg .w{color:#e0a44e}
+
+/* 拡大 */
+#zoom{position:fixed;inset:0;background:#0d1114f5;z-index:70;display:flex;align-items:center;justify-content:center;padding:8px}
+#zoom[hidden]{display:none}
+#zoom canvas{width:100%;max-height:100%;border-radius:6px}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="t">改善提案 動画メーカー</span>
+  <span class="sp"></span>
+  <button id="b-set">設定</button>
+</header>
+
+<div class="gauge">
+  <div class="gline">
+    <span><b id="g-t" class="mono">0:00</b> <span id="g-max">/ 3:30</span></span>
+    <span id="g-size" class="mono"></span>
+  </div>
+  <div class="gbar" id="gbar"><div class="rest"></div></div>
+</div>
+
+<div class="pager" id="pager"></div>
+<div class="body"><div class="slide" id="slide"></div></div>
+
+<footer>
+  <button class="nb" id="b-prev">←</button>
+  <button class="nb go" id="b-next">次へ</button>
+</footer>
+
+<div class="sheet" id="sheet" hidden><div class="in" id="sheet-in"></div></div>
+
+<div class="run" id="run" hidden>
+  <div class="ttl" id="run-t">動画を作っています</div>
+  <div class="ring" id="ring">
+    <svg width="132" height="132"><circle cx="66" cy="66" r="58" stroke="#2b343a" stroke-width="9" fill="none"></circle>
+      <circle id="arc" cx="66" cy="66" r="58" stroke="#3fae7c" stroke-width="9" fill="none"
+        stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="364.4"></circle></svg>
+    <div class="pct" id="pct">0%</div>
+  </div>
+  <div class="st" id="run-s">準備しています…</div>
+  <div class="warn" id="run-w">この画面を表示したままお待ちください。<br>他のアプリに切り替えると止まります。</div>
+  <video id="res" controls playsinline hidden></video>
+  <div id="lg"></div>
+  <div class="acts" id="run-a" hidden>
+    <button id="a-play">動画を確認</button>
+    <button id="a-save">写真に保存</button>
+    <button id="a-mail" class="p">メール送信</button>
+  </div>
+  <div class="acts" id="run-c" hidden>
+    <button id="a-snd">音だけ確認</button>
+    <button id="a-again">録画方式で作り直す</button>
+  </div>
+  <div class="acts" id="run-b" hidden><button id="a-close">閉じる</button></div>
+</div>
+
+<div id="zoom" hidden><canvas id="zc" width="1280" height="720"></canvas></div>
+
+<input type="file" id="fp" accept="image/*,video/*" hidden>
+<input type="file" id="fpm" accept="image/*,video/*" multiple hidden>
+<input type="file" id="pp" accept="application/json" hidden>
+
+<script>
+"use strict";
+
+/* ══════════ 1. モデル ══════════ */
+
+const KINDS={
+  title:{n:"タイトル",fixed:true},
+  toc:{n:"目次",fixed:true},
+  content:{n:"ページ",fixed:false},
+  cost:{n:"効果（金額）",fixed:true},
+  closing:{n:"結び",fixed:true},
+};
+const LABELS=["改善前","問題点","改善点","改善後","効果","（見出しなし）"];
+const MODES=[{v:"both",t:"字幕＋読み上げ"},{v:"say",t:"読み上げのみ"},{v:"mute",t:"無音"}];
+
+const DEFAULTS={
+  ttsKey:"", ttsVoice:"ja-JP-Chirp3-HD-Aoede", ttsRate:1.0, ttsPitch:0,
+  accent:"#1f7a4d", mailTo:"",
+  width:1280, height:720, fps:30, targetMB:24, maxSec:210,
+  subSize:44, subColor:"#ffffff", subStyle:"outline", subBottom:7, subMaxLines:2,
+  theme:"light", silentSec:2.5, pad:0.3,
+  chargeMachine:4800, chargeMan:3200, months:12,
+  closingText:"ご清聴ありがとうございました", orgName:"",
+};
+const THEMES={
+  light:{bg:"#fbfbf8",fg:"#15191d",sub:"#5b646b",line:"#d5d8d1"},
+  dark: {bg:"#12161b",fg:"#eef2f5",sub:"#9aa7b3",line:"#2d3742"},
+};
+const theme=()=>({...THEMES[S.theme],ac:S.accent||"#1f7a4d"});
+// [名前, 表示名, 性別 f/m, 音質ランク]
+const TIERS={hd:"Chirp3 HD ／ 最高音質",n2:"Neural2 ／ 標準・速度調整可",wn:"WaveNet",st:"Standard ／ 最安"};
+const VOICES=[
+  ["ja-JP-Chirp3-HD-Aoede","アオエデ　落ち着いた","f","hd"],
+  ["ja-JP-Chirp3-HD-Kore","コーレ　明るい","f","hd"],
+  ["ja-JP-Chirp3-HD-Leda","レダ　やわらかい","f","hd"],
+  ["ja-JP-Chirp3-HD-Zephyr","ゼフィア　軽やか","f","hd"],
+  ["ja-JP-Chirp3-HD-Charon","カロン　低め・落ち着き","m","hd"],
+  ["ja-JP-Chirp3-HD-Puck","パック　明るい","m","hd"],
+  ["ja-JP-Chirp3-HD-Orus","オルス　標準的","m","hd"],
+  ["ja-JP-Chirp3-HD-Fenrir","フェンリル　力強い","m","hd"],
+  ["ja-JP-Neural2-B","Neural2 B","f","n2"],
+  ["ja-JP-Neural2-C","Neural2 C","m","n2"],
+  ["ja-JP-Neural2-D","Neural2 D","m","n2"],
+  ["ja-JP-Wavenet-A","WaveNet A","f","wn"],
+  ["ja-JP-Wavenet-C","WaveNet C","m","wn"],
+  ["ja-JP-Standard-A","Standard A","f","st"],
+  ["ja-JP-Standard-C","Standard C","m","st"],
+];
+const isChirp=n=>/Chirp/i.test(n||"");
+const vRec=n=>VOICES.find(v=>v[0]===n)||VOICES[0];
+const genderOf=n=>vRec(n)[2];
+
+function uid(){return Math.random().toString(36).slice(2,10);}
+let S={...DEFAULTS};
+let P=blank();
+let cur=0;
+const media=new Map();   // id -> {blob,url,el,kind,dur}
+const audio=new Map();   // pageId -> {buf,dur}
+
+function blank(){
+  return {
+    meta:{title:"",dept:"",presenter:"",members:""},
+    cost:{qty:0,qtyUnit:"month",basis:"per",before:0,after:0,target:"both"},
+    pages:[
+      {id:uid(),kind:"title"},
+      {id:uid(),kind:"toc",show:"",say:"",mode:"say"},
+      newContent("改善前"),
+      {id:uid(),kind:"cost",say:""},
+      {id:uid(),kind:"closing",say:""},
+    ],
+  };
+}
+function newContent(label){
+  return {id:uid(),kind:"content",label:label||"改善前",mediaId:null,
+    show:"",say:"",mode:"both",trimStart:0,trimEnd:0,pause:null};
+}
+// 読み上げの後ろに入れる空白時間（秒）
+const pauseOf=p=>p.pause!=null?Number(p.pause)
+  :(speechOf(p)?Number(S.pad):Number(S.silentSec));
+const $=q=>document.querySelector(q);
+const esc=s=>(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=s=>Math.floor(s/60)+":"+String(Math.floor(Math.round(s)%60)).padStart(2,"0");
+const yen=n=>"¥"+Math.round(n).toLocaleString("ja-JP");
+const pages=()=>P.pages;
+const page=()=>P.pages[cur];
+const firstFixed=k=>P.pages.findIndex(p=>p.kind===k);
+
+/* ══════════ 2. 保存 ══════════ */
+let db;
+const openDB=()=>new Promise((r,j)=>{const q=indexedDB.open("teian-ios",1);
+  q.onupgradeneeded=()=>q.result.createObjectStore("m");q.onsuccess=()=>{db=q.result;r()};q.onerror=()=>j(q.error)});
+const idb=(m,f)=>new Promise((r,j)=>{const q=f(db.transaction("m",m).objectStore("m"));
+  q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error)});
+const putB=(k,b)=>idb("readwrite",s=>s.put(b,k));
+const getB=k=>idb("readonly",s=>s.get(k));
+const delB=k=>idb("readwrite",s=>s.delete(k));
+let sv;
+const save=()=>{clearTimeout(sv);sv=setTimeout(()=>{
+  try{localStorage.setItem("ti.p",JSON.stringify(P));localStorage.setItem("ti.s",JSON.stringify(S));}catch{}},250);};
+function load(){
+  try{const s=JSON.parse(localStorage.getItem("ti.s"));if(s)S={...DEFAULTS,...s};}catch{}
+  try{const p=JSON.parse(localStorage.getItem("ti.p"));if(p?.pages?.length)P=p;}catch{}
+}
+
+/* ══════════ 3. 素材 ══════════ */
+async function pick(pg,multi){
+  const inp=multi?$("#fpm"):$("#fp");
+  inp.dataset.pid=pg.id;
+  inp.click();
+}
+async function attachFile(pg,f,insertAfter){
+  const isV=f.type.startsWith("video/");
+  if(!isV&&!f.type.startsWith("image/")) return;
+  const id=uid();
+  await putB(id,f);
+  await link(id,f,isV?"video":"image");
+  if(insertAfter){
+    const np=newContent(pg.label);
+    np.mediaId=id;
+    const m=media.get(id); if(m&&m.kind==="video") np.trimEnd=Math.min(15,m.dur);
+    P.pages.splice(P.pages.indexOf(insertAfter)+1,0,np);
+    return np;
+  }
+  if(pg.mediaId){ media.delete(pg.mediaId); delB(pg.mediaId); }
+  pg.mediaId=id;
+  const m=media.get(id);
+  if(m&&m.kind==="video"){pg.trimStart=0;pg.trimEnd=Math.min(15,m.dur);}
+  return pg;
+}
+const link=(id,blob,kind)=>new Promise(res=>{
+  const url=URL.createObjectURL(blob);
+  if(kind==="video"){
+    const v=document.createElement("video");
+    v.src=url;v.muted=true;v.playsInline=true;v.preload="auto";v.setAttribute("playsinline","");
+    v.onloadedmetadata=()=>{media.set(id,{blob,url,el:v,kind:"video",dur:v.duration||0});res();};
+    v.onerror=()=>res();
+  }else{
+    const i=new Image();i.src=url;
+    i.onload=()=>{media.set(id,{blob,url,el:i,kind:"image",dur:0});res();};
+    i.onerror=()=>res();
+  }});
+async function restore(){
+  for(const p of P.pages) if(p.mediaId){
+    const b=await getB(p.mediaId);
+    if(b) await link(p.mediaId,b,b.type.startsWith("video/")?"video":"image");
+    else p.mediaId=null;
+  }
+}
+
+/* ══════════ 4. 原価 ══════════ */
+function calc(){
+  const c=P.cost,mo=Number(S.months)||12,q=Number(c.qty)||0;
+  const annual=c.qtyUnit==="month"?q*mo:q;
+  const diff=(Number(c.before)||0)-(Number(c.after)||0);
+  const min=c.basis==="per"?diff*annual:diff*(c.qtyUnit==="month"?mo:1);
+  const h=min/60;
+  const rate=(c.target!=="man"?Number(S.chargeMachine)||0:0)+(c.target!=="machine"?Number(S.chargeMan)||0:0);
+  return {annual,diff,savedH:h,rate,amount:h*rate,months:mo,
+    basis:c.basis,qtyUnit:c.qtyUnit,target:c.target,
+    before:Number(c.before)||0,after:Number(c.after)||0};
+}
+const TGT={machine:"機械",man:"人",both:"機械＋人"};
+function costLines(){
+  const k=calc(),u=k.basis==="per"?"分/個":"分";
+  return [`改善前 ${k.before}${u} − 改善後 ${k.after}${u} = ${k.diff.toFixed(1)}${u} 短縮`,
+    k.basis==="per"?`${k.diff.toFixed(1)}分 × 年間 ${k.annual.toLocaleString()}個 = 年間 ${k.savedH.toFixed(1)}時間`
+                   :`${k.diff.toFixed(1)}分 × 年${k.qtyUnit==="month"?k.months:1}回 = 年間 ${k.savedH.toFixed(1)}時間`,
+    `${k.savedH.toFixed(1)}時間 × ${yen(k.rate)}／時（${TGT[k.target]}）`];
+}
+function costSay(){
+  const k=calc(); if(!k.diff) return "";
+  return `原価低減の効果です。改善前 ${k.before} 分に対し、改善後は ${k.after} 分となり、`
+    +`年間で およそ ${k.savedH.toFixed(0)} 時間の短縮となります。`
+    +`${TGT[k.target]}のチャージで換算すると、年間 ${Math.round(k.amount).toLocaleString()} 円の低減効果です。`;
+}
+
+/* ══════════ 5. タイムライン ══════════ */
+function speechOf(p){
+  if(p.kind==="title")   return (p.say||"").trim();
+  if(p.kind==="toc")     return (p.say||"").trim()||tocSpeech();
+  if(p.kind==="cost")    return (p.say||"").trim()||costSay();
+  if(p.kind==="closing") return (p.say||"").trim()||S.closingText;
+  if(p.mode==="mute")    return "";
+  return (p.say||"").trim()||(p.show||"").trim();
+}
+const subOf=p=>(p.kind==="content"&&p.mode==="both")?(p.show||"").trim():"";
+function tocSpeech(){
+  const ls=[...new Set(P.pages.filter(p=>p.kind==="content"&&p.label!=="（見出しなし）").map(p=>p.label))];
+  return ls.length?`本日は、${ls.join("、")}の順にご説明します。`:"";
+}
+const estimate=t=>t?Math.max(1.2,t.replace(/\s/g,"").length*0.16/(Number(S.ttsRate)||1)+0.5):Number(S.silentSec);
+const keyOf=p=>p.id+"#"+hash(speechOf(p)+"|"+S.ttsVoice+"|"+S.ttsRate);
+const hash=s=>{let h=0;for(let i=0;i<(s||"").length;i++)h=(h*31+s.charCodeAt(i))|0;return(h>>>0).toString(36)};
+
+function timeline(){
+  let t=0;
+  return P.pages.map(p=>{
+    const txt=speechOf(p);
+    const a=audio.get(keyOf(p));
+    const sp=a?a.dur:(txt?estimate(txt):0);
+    let dur=sp+pauseOf(p);
+    const m=p.mediaId?media.get(p.mediaId):null;
+    if(m&&m.kind==="video"){
+      const clip=Math.max(0.5,(p.trimEnd||m.dur)-(p.trimStart||0));
+      dur=Math.max(dur,clip);
+    }
+    const o={p,txt,sub:subOf(p),dur,start:t,guess:!a,speech:sp,media:m};
+    t+=dur; return o;
+  });
+}
+const totalDur=()=>timeline().reduce((a,c)=>a+c.dur,0);
+
+function estSize(tl){
+  // 静止画は 0.35Mbps、動画クリップは 2.2Mbps で概算
+  let bits=0;
+  for(const c of tl) bits += c.dur*((c.media&&c.media.kind==="video")?2.2e6:0.35e6);
+  bits += totalDur()*64000;
+  return bits/8/1048576;
+}
+
+function drawGauge(){
+  const tl=timeline(), T=tl.reduce((a,c)=>a+c.dur,0), M=Number(S.maxSec);
+  const sc=Math.max(T,M*1.02), g=$("#gbar");
+  g.innerHTML="";
+  for(const c of tl){
+    const d=document.createElement("div"); d.className="sg";
+    d.dataset.k=!c.txt?"mute":(c.media&&c.media.kind==="video")?"movie":c.media?"photo":"slide";
+    d.style.flex="0 0 "+(c.dur/sc*100)+"%";
+    g.appendChild(d);
+  }
+  const r=document.createElement("div");r.className="rest";g.appendChild(r);
+  const l=document.createElement("div");l.className="lim";l.style.left=(M/sc*100)+"%";g.appendChild(l);
+  const e=$("#g-t"); e.textContent=fmt(T); e.classList.toggle("over",T>M);
+  $("#g-max").textContent=`/ ${fmt(M)}（目安）`;
+  const mb=estSize(tl);
+  $("#g-size").innerHTML=`約 ${mb.toFixed(0)} MB`+(mb>24?` <span style="color:var(--warn)">Gmail超過</span>`:"");
+}
+
+/* ══════════ 6. ページ送り ══════════ */
+function drawPager(){
+  const el=$("#pager");
+  el.innerHTML=P.pages.map((p,i)=>{
+    const st=i===cur?"cur":done(p)?"done":"";
+    const n=p.kind==="content"?(p.label==="（見出しなし）"?"ページ":p.label):KINDS[p.kind].n;
+    const num=p.kind==="content"?contentNo(p):{title:"表",toc:"目",cost:"効",closing:"結"}[p.kind];
+    return `<button class="pg" data-i="${i}" data-s="${st}">
+      <span class="d">${st==="done"?"済":num}</span><span class="l">${esc(n)}</span></button>`;
+  }).join("")+`<button class="pg add" data-add="1"><span class="d">＋</span><span class="l">追加</span></button>`;
+  el.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>go(Number(b.dataset.i)));
+  el.querySelector("[data-add]").onclick=addPage;
+  const c=el.querySelector('[data-s="cur"]');
+  if(c) c.scrollIntoView({inline:"center",block:"nearest",behavior:"smooth"});
+}
+function labelNo(p){
+  const same=P.pages.filter(x=>x.kind==="content"&&x.label===p.label);
+  return same.length>1?same.indexOf(p)+1:0;
+}
+function headText(p){
+  const n=labelNo(p);
+  return p.label+(n?" "+n:"");
+}
+const contentNo=p=>{const n=labelNo(p);
+  return n?String(n):String(P.pages.filter(x=>x.kind==="content").indexOf(p)+1);};
+function done(p){
+  if(p.kind==="title")   return !!P.meta.title;
+  if(p.kind==="content") return !!p.mediaId;
+  if(p.kind==="cost")    return calc().diff!==0;
+  return true;
+}
+function addPage(){
+  const last=P.pages.map(p=>p.kind).lastIndexOf("content");
+  const at=last>=0?last+1:firstFixed("cost");
+  const prev=last>=0?P.pages[last]:null;
+  const np=newContent(prev?prev.label:"改善前");
+  P.pages.splice(at,0,np);
+  cur=at; save(); paint();
+  setTimeout(()=>pick(np,false),150);
+}
+function go(i){
+  const n=Math.max(0,Math.min(P.pages.length-1,i));
+  if(n===cur){paint();return;}
+  const dir=n>cur?1:-1, sl=$("#slide");
+  sl.classList.add(dir>0?"out":"outR");
+  setTimeout(()=>{cur=n;sl.classList.remove("out","outR");paint();$(".body").scrollTop=0;},200);
+}
+
+/* ══════════ 7. 画面 ══════════ */
+function paint(){
+  drawPager(); drawGauge();
+  const p=page();
+  const n=p.kind==="content"
+    ?(p.label==="（見出しなし）"?`ページ ${contentNo(p)}`:headText(p)||p.label)
+    :KINDS[p.kind].n;
+  $("#slide").innerHTML=`
+    <div class="head"><h1>${esc(n)}</h1>
+      <span class="sub">${cur+1} / ${P.pages.length}</span></div>
+    ${p.kind==="content"?zoneHTML(p):`<canvas class="paper" id="pv" width="1280" height="720"></canvas>`}
+    ${bodyHTML(p)}`;
+  bind(p);
+  const c=$("#pv"); if(c) renderTo(c,p,0);
+  $("#b-prev").disabled=cur===0;
+  const lastPage=cur===P.pages.length-1;
+  $("#b-next").textContent=lastPage?"動画を作る":"次へ";
+  $("#b-next").onclick=lastPage?runExport:()=>go(cur+1);
+}
+
+function zoneHTML(p){
+  const m=p.mediaId?media.get(p.mediaId):null;
+  return `<div class="tapzone">
+    <canvas class="paper" id="pv" width="1280" height="720"></canvas>
+    ${m?`<button class="chgbtn" id="chg">写真を変える</button>`
+       :`<div class="hintbox"><span class="ic">＋</span>
+          <span class="tx">タップして写真・動画を選ぶ</span></div>`}
+  </div>`;
+}
+
+function bodyHTML(p){
+  if(p.kind==="title") return `
+    <div class="card"><h3>提案の内容</h3>
+      <label class="f"><span>提案タイトル</span>
+        <input data-m="title" value="${esc(P.meta.title)}" placeholder="治具改良による取付時間の短縮"></label>
+      <div class="g2">
+        <label class="f"><span>部署・課</span><input data-m="dept" value="${esc(P.meta.dept)}" placeholder="製造二課"></label>
+        <label class="f"><span>代表提案者</span><input data-m="presenter" value="${esc(P.meta.presenter)}" placeholder="山田 太郎"></label>
+      </div>
+      <label class="f" style="margin-top:10px"><span>メンバー<em>読点で区切る</em></span>
+        <input data-m="members" value="${esc(P.meta.members)}" placeholder="鈴木、佐藤、高橋"></label>
+    </div>
+    ${sayCard(p,"冒頭のあいさつ（空欄なら無音）")}`;
+
+  if(p.kind==="toc") return `
+    <div class="card"><h3>この動画の構成</h3>
+      <p class="hint" style="margin:0">見出しは追加したページから自動で作られます。</p></div>
+    ${sayCard(p,"空欄なら見出しから自動で作ります")}`;
+
+  if(p.kind==="cost"){
+    const c=P.cost,k=calc();
+    return `<div class="card"><h3>数量と時間</h3>
+      <div class="g2">
+        <label class="f"><span>個数</span><input type="number" inputmode="decimal" data-c="qty" value="${c.qty}"></label>
+        <label class="f"><span>その個数は</span><select data-c="qtyUnit">
+          <option value="month"${c.qtyUnit==="month"?" selected":""}>1ヶ月あたり</option>
+          <option value="year"${c.qtyUnit==="year"?" selected":""}>1年あたり</option></select></label>
+      </div>
+      <div class="g2" style="margin-top:9px">
+        <label class="f"><span>改善前（分）</span><input type="number" inputmode="decimal" data-c="before" value="${c.before}"></label>
+        <label class="f"><span>改善後（分）</span><input type="number" inputmode="decimal" data-c="after" value="${c.after}"></label>
+      </div>
+      <div class="g2" style="margin-top:9px">
+        <label class="f"><span>時間の入れ方</span><select data-c="basis">
+          <option value="per"${c.basis==="per"?" selected":""}>1個あたり</option>
+          <option value="total"${c.basis==="total"?" selected":""}>全部まとめて</option></select></label>
+        <label class="f"><span>チャージ対象</span><select data-c="target">
+          <option value="machine"${c.target==="machine"?" selected":""}>機械のみ</option>
+          <option value="man"${c.target==="man"?" selected":""}>人のみ</option>
+          <option value="both"${c.target==="both"?" selected":""}>機械＋人</option></select></label>
+      </div>
+      <div class="formula" id="fx">${fxHTML()}</div>
+    </div>
+    ${sayCard(p,"空欄なら計算結果から自動で作ります")}`;
+  }
+
+  if(p.kind==="closing") return `
+    <div class="card"><label class="f"><span>表示する文</span>
+      <input data-ct="1" value="${esc(S.closingText)}"></label></div>
+    ${sayCard(p,"空欄なら上の文をそのまま読み上げます")}`;
+
+  /* content */
+  const m=p.mediaId?media.get(p.mediaId):null;
+  return `<div class="card">
+      <label class="f"><span>見出し<em>動画の左上に出ます</em></span>
+        <select data-lab="1">${LABELS.map(l=>`<option${p.label===l?" selected":""}>${l}</option>`).join("")}</select></label>
+      <label class="f show"><span>資料に出す文字<em>この文がそのまま画面に出ます</em></span>
+        <textarea data-f="show" placeholder="例）芯出しに毎回15分かかっていた">${esc(p.show||"")}</textarea></label>
+      <label class="f say"><span>読み上げ文<em>空欄なら上の文をそのまま読みます</em></span>
+        <textarea data-f="say" placeholder="読み方を変えたいときだけ入力">${esc(p.say||"")}</textarea></label>
+      <label class="f"><span>この画面の扱い</span>
+        <div class="chips">${MODES.map(x=>
+          `<button class="chip" data-mode="${x.v}" aria-pressed="${p.mode===x.v}">${x.t}</button>`).join("")}</div></label>
+      <label class="f"><span>読み上げの後の間<em>この画面を何秒のばすか</em></span>
+        <input type="number" step="0.5" min="0" max="15" inputmode="decimal" data-f="pause" value="${pauseOf(p)}"></label>
+      ${m&&m.kind==="video"?`<div class="g2" style="margin-top:10px">
+        <label class="f"><span>開始（秒）</span><input type="number" step="0.5" inputmode="decimal" data-f="trimStart" value="${p.trimStart||0}"></label>
+        <label class="f"><span>終了（秒）</span><input type="number" step="0.5" inputmode="decimal" data-f="trimEnd" value="${p.trimEnd||m.dur.toFixed(1)}"></label>
+      </div><p class="hint">この動画は ${m.dur.toFixed(1)} 秒です。10秒前後にすると容量が収まります。</p>`:""}
+      <div class="rowbtns">
+        <button class="sm" id="dup">このページを複製</button>
+        <button class="sm" id="addmulti">まとめて追加</button>
+        <button class="sm warn" id="del">削除</button>
+      </div>
+    </div>`;
+}
+function sayCard(p,ph){
+  return `<div class="card"><label class="f say"><span>読み上げ文</span>
+      <textarea data-f="say" placeholder="${esc(ph)}">${esc(p.say||"")}</textarea></label>
+    <label class="f"><span>読み上げの後の間<em>秒</em></span>
+      <input type="number" step="0.5" min="0" max="15" inputmode="decimal" data-f="pause" value="${pauseOf(p)}"></label>
+  </div>`;
+}
+const fxHTML=()=>costLines().map(l=>`<div class="ln">${esc(l)}</div>`).join("")
+  +`<div class="amt"><b>${yen(calc().amount)}</b><span>／ 年間</span></div>`;
+
+function bind(p){
+  const R=$("#slide");
+  R.querySelectorAll("[data-m]").forEach(e=>e.oninput=()=>{
+    P.meta[e.dataset.m]=e.value;save();live();});
+  R.querySelectorAll("[data-f]").forEach(e=>e.oninput=()=>{
+    const k=e.dataset.f;
+    p[k]=(k==="trimStart"||k==="trimEnd"||k==="pause")
+      ?(e.value===""?null:Number(e.value)):e.value;
+    audio.delete(keyOf(p));save();live();drawGauge();});
+  R.querySelectorAll("[data-ct]").forEach(e=>e.oninput=()=>{S.closingText=e.value;save();live();});
+  const lab=R.querySelector("[data-lab]");
+  if(lab) lab.onchange=()=>{p.label=lab.value;save();paint();};
+  R.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{
+    p.mode=b.dataset.mode;audio.delete(keyOf(p));save();paint();});
+  R.querySelectorAll("[data-c]").forEach(e=>e.oninput=()=>{
+    const k=e.dataset.c;
+    P.cost[k]=["qtyUnit","basis","target"].includes(k)?e.value:Number(e.value);
+    audio.delete(keyOf(p));save();
+    const fx=R.querySelector("#fx"); if(fx) fx.innerHTML=fxHTML();
+    live();drawGauge();});
+
+  const zone=R.querySelector(".tapzone");
+  if(zone){
+    zone.onclick=ev=>{ if(swiped) return;
+      if(ev.target.id==="chg"||!p.mediaId) pick(p,false); else zoom(); };
+  }else{
+    const c=R.querySelector("#pv"); if(c) c.onclick=()=>{ if(!swiped) zoom(); };
+  }
+  swipe(R.querySelector("#pv"));
+  const dup=R.querySelector("#dup");
+  if(dup) dup.onclick=()=>{
+    const np={...p,id:uid()};
+    P.pages.splice(cur+1,0,np); cur++; save(); paint();};
+  const am=R.querySelector("#addmulti");
+  if(am) am.onclick=()=>pick(p,true);
+  const del=R.querySelector("#del");
+  if(del) del.onclick=()=>{
+    if(!confirm("このページを削除します。よろしいですか？")) return;
+    if(p.mediaId){media.delete(p.mediaId);delB(p.mediaId);}
+    audio.delete(keyOf(p));
+    const i=P.pages.indexOf(p);
+    const others=P.pages.filter(x=>x.kind==="content"&&x!==p);
+    if(!others.length){                    // 最後の1枚は消さずに空にする
+      const fresh=newContent(p.label);
+      P.pages.splice(i,1,fresh); cur=i;
+    }else{
+      P.pages.splice(i,1); cur=Math.min(P.pages.length-1,Math.max(0,i-1));
+    }
+    save(); paint();};
+}
+let swiped=false;
+function swipe(el){
+  if(!el) return;
+  let x0=0,y0=0,t0=0;
+  el.addEventListener("touchstart",e=>{
+    const t=e.changedTouches[0]; x0=t.clientX; y0=t.clientY; t0=Date.now(); swiped=false;},{passive:true});
+  el.addEventListener("touchend",e=>{
+    const t=e.changedTouches[0];
+    const dx=t.clientX-x0, dy=t.clientY-y0, dt=Date.now()-t0;
+    if(Math.abs(dx)>48 && Math.abs(dx)>Math.abs(dy)*1.6 && dt<700){
+      swiped=true;
+      go(dx<0?cur+1:cur-1);
+      setTimeout(()=>swiped=false,400);
+    }},{passive:true});
+}
+function live(){ const c=$("#pv"); if(c) renderTo(c,page(),0); }
+function zoom(){ $("#zoom").hidden=false; renderTo($("#zc"),page(),0); }
+
+/* ══════════ 8. 描画 ══════════ */
+function renderTo(cv,p,t){
+  const g=cv.getContext("2d",{alpha:false});
+  draw(g,cv.width,cv.height,cv.width/1280,p,t);
+}
+function wrap(g,t,mx){const o=[];let l="";
+  for(const ch of t){if(ch==="\n"){o.push(l);l="";continue;}
+    if(g.measureText(l+ch).width>mx&&l){o.push(l);l=ch;}else l+=ch;}
+  if(l)o.push(l);return o;}
+function subtitle(g,text,W,H,s){
+  if(!text) return;
+  let size=S.subSize*s,lines;const mx=W*0.88;
+  for(;;){g.font=`700 ${size}px "Hiragino Sans","BIZ UDPGothic",sans-serif`;
+    lines=wrap(g,text,mx);
+    if(lines.length<=S.subMaxLines||size<14*s)break;size*=0.92;}
+  if(lines.length>S.subMaxLines)lines=lines.slice(0,S.subMaxLines);
+  const lh=size*1.4,bot=H-H*(S.subBottom/100),top=bot-lh*lines.length;
+  if(S.subStyle==="band"){g.fillStyle="rgba(0,0,0,.6)";g.fillRect(0,top-lh*.3,W,lh*lines.length+lh*.5);}
+  g.textAlign="center";g.textBaseline="alphabetic";
+  lines.forEach((l,i)=>{const y=top+lh*(i+1)-lh*.26;
+    if(S.subStyle==="outline"){g.lineJoin="round";g.miterLimit=2;
+      g.lineWidth=Math.max(3,size*.14);g.strokeStyle="rgba(0,0,0,.9)";g.strokeText(l,W/2,y);}
+    g.fillStyle=S.subColor;g.fillText(l,W/2,y);});
+}
+function draw(g,W,H,s,p,t){
+  const T=theme();
+  g.fillStyle=T.bg;g.fillRect(0,0,W,H);
+  g.fillStyle=T.ac;g.fillRect(0,0,W,5*s);
+
+  if(p.kind==="title"){
+    g.textAlign="center";
+    g.fillStyle=T.sub;g.font=`600 ${38*s}px "Hiragino Sans",sans-serif`;
+    g.fillText("業務改善提案",W/2,H*0.215);
+    g.fillStyle=T.fg;g.font=`700 ${86*s}px "Hiragino Sans",sans-serif`;
+    const tl=wrap(g,P.meta.title||"（提案タイトル）",W*0.86).slice(0,2);
+    let tw=0; tl.forEach(l=>tw=Math.max(tw,g.measureText(l).width));
+    tl.forEach((l,i)=>g.fillText(l,W/2,H*0.42+i*100*s));
+    const ty=H*0.42+(tl.length-1)*100*s;
+    g.strokeStyle=T.ac;g.lineWidth=5*s;                 // 下線はタイトルの幅に合わせる
+    g.beginPath();g.moveTo(W/2-tw/2,ty+58*s);g.lineTo(W/2+tw/2,ty+58*s);g.stroke();
+    g.fillStyle=T.sub;g.font=`400 ${34*s}px "Hiragino Sans",sans-serif`;
+    const who=[S.orgName,P.meta.dept].filter(Boolean).join("　");
+    if(who)g.fillText(who,W/2,H*0.735);
+    g.fillStyle=T.fg;g.font=`700 ${52*s}px "Hiragino Sans",sans-serif`;
+    if(P.meta.presenter)g.fillText(P.meta.presenter,W/2,H*0.825);
+    g.fillStyle=T.sub;g.font=`400 ${32*s}px "Hiragino Sans",sans-serif`;
+    if(P.meta.members)g.fillText("メンバー："+P.meta.members,W/2,H*0.905);
+    return;
+  }
+  if(p.kind==="toc"){
+    g.textAlign="center";
+    g.fillStyle=T.fg;g.font=`700 ${64*s}px "Hiragino Sans",sans-serif`;g.fillText("目次",W/2,H*0.22);
+    g.strokeStyle=T.ac;g.lineWidth=4*s;
+    g.beginPath();g.moveTo(W/2-72*s,H*0.27);g.lineTo(W/2+72*s,H*0.27);g.stroke();
+    const ls=[...new Set(P.pages.filter(x=>x.kind==="content"&&x.label!=="（見出しなし）").map(x=>x.label))];
+    const n=Math.max(1,ls.length), gap=Math.min(96,420/n)*s, top=H*0.44;
+    ls.forEach((l,i)=>{
+      const y=top+i*gap;
+      g.textAlign="left";
+      g.fillStyle=T.ac;g.font=`700 ${40*s}px "Hiragino Sans",sans-serif`;g.fillText("①②③④⑤⑥⑦⑧"[i]||"・",W*0.30,y);
+      g.fillStyle=T.fg;g.font=`600 ${46*s}px "Hiragino Sans",sans-serif`;g.fillText(l,W*0.30+62*s,y);
+      g.strokeStyle=T.line;g.lineWidth=1.5*s;
+      g.beginPath();g.moveTo(W*0.30,y+26*s);g.lineTo(W*0.70,y+26*s);g.stroke();});
+    return;
+  }
+  if(p.kind==="cost"){
+    head(g,T,"効果（原価低減）",W,s);
+    g.textAlign="left";
+    costLines().forEach((l,i)=>{g.fillStyle=T.sub;
+      g.font=`400 ${30*s}px "Hiragino Sans",sans-serif`;g.fillText(l,110*s,H*0.32+i*58*s);});
+    g.strokeStyle=T.ac;g.lineWidth=3*s;
+    g.beginPath();g.moveTo(110*s,H*0.60);g.lineTo(W-110*s,H*0.60);g.stroke();
+    const a=yen(calc().amount);
+    g.fillStyle=T.ac;g.font=`700 ${88*s}px "Hiragino Sans",sans-serif`;
+    g.fillText(a,110*s,H*0.76);
+    const aw=g.measureText(a).width;
+    g.fillStyle=T.sub;g.font=`400 ${30*s}px "Hiragino Sans",sans-serif`;
+    g.fillText("／ 年",110*s+aw+20*s,H*0.76);
+    return;
+  }
+  if(p.kind==="closing"){
+    g.textAlign="center";g.fillStyle=T.fg;
+    g.font=`700 ${58*s}px "Hiragino Sans",sans-serif`;
+    g.fillText(S.closingText,W/2,H*0.5);
+    const cw=g.measureText(S.closingText).width;        // 下線は文の幅に合わせる
+    g.strokeStyle=T.ac;g.lineWidth=4*s;
+    g.beginPath();g.moveTo(W/2-cw/2,H*0.57);g.lineTo(W/2+cw/2,H*0.57);g.stroke();
+    return;
+  }
+  /* content */
+  const hasHead=p.label&&p.label!=="（見出しなし）";
+  if(hasHead) head(g,T,headText(p),W,s);
+  const m=p.mediaId?media.get(p.mediaId):null;
+  const sub=subOf(p);
+  if(m){
+    const el=m.el;
+    const iw=el.videoWidth||el.naturalWidth, ih=el.videoHeight||el.naturalHeight;
+    if(iw&&ih){
+      const topY=hasHead?110*s:40*s;
+      const rsv=sub?H*(S.subBottom/100)+S.subSize*s*(S.subMaxLines+0.7):40*s;
+      const bw=W-80*s, bh=Math.max(100*s,H-topY-rsv);
+      const r=Math.min(bw/iw,bh/ih), w=iw*r, h=ih*r;
+      g.drawImage(el,(W-w)/2,topY+(bh-h)/2,w,h);
+    }
+  }else{
+    g.textAlign="center";g.fillStyle=T.sub;
+    g.font=`400 ${26*s}px "Hiragino Sans",sans-serif`;
+    g.fillText("写真・動画を選んでください",W/2,H*0.55);
+  }
+  if(!sub&&(p.show||"").trim()&&p.mode!=="both"){
+    g.textAlign="right";g.fillStyle=T.sub;g.font=`400 ${20*s}px "Hiragino Sans",sans-serif`;
+    g.fillText(p.mode==="mute"?"（無音）":"♪ 読み上げのみ",W-40*s,H-24*s);
+  }
+  subtitle(g,sub,W,H,s);
+}
+function head(g,T,lb,W,s){
+  g.textAlign="left";g.textBaseline="alphabetic";
+  g.fillStyle=T.fg;g.font=`700 ${40*s}px "Hiragino Sans",sans-serif`;g.fillText(lb,64*s,74*s);
+  g.strokeStyle=T.ac;g.lineWidth=4*s;
+  g.beginPath();g.moveTo(64*s,92*s);g.lineTo(64*s+g.measureText(lb).width,92*s);g.stroke();
+  g.strokeStyle=T.line;g.lineWidth=1.2*s;
+  g.beginPath();g.moveTo(64*s,92*s);g.lineTo(W-64*s,92*s);g.stroke();
+}
+
+/* ══════════ 9. Google Cloud TTS ══════════ */
+const AC=()=>(window._ac||=new (window.AudioContext||window.webkitAudioContext)());
+async function ttsBytes(text){
+  if(!S.ttsKey) throw new Error("APIキーが未入力です");
+  if(!text||!text.trim()) throw new Error("読み上げる文がありません");
+  const url="https://texttospeech.googleapis.com/v1/text:synthesize?key="+encodeURIComponent(S.ttsKey.trim());
+  const call=cfg=>fetch(url,{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({input:{text},voice:{languageCode:"ja-JP",name:S.ttsVoice},audioConfig:cfg})});
+  const base={audioEncoding:"LINEAR16",sampleRateHertz:24000};
+  const full={...base,speakingRate:Number(S.ttsRate)};
+  if(!isChirp(S.ttsVoice)) full.pitch=Number(S.ttsPitch);
+  let r;
+  try{ r=await call(full); }
+  catch(e){ throw new Error("通信できません（ネットワークかCORS）："+e.message); }
+  if(r.status===400){
+    const first=await r.text();
+    try{ r=await call(base); }catch(e){ throw new Error("通信できません："+e.message); }
+    if(r.ok) log("この声は速度指定に非対応のため、標準速度で作りました。","w");
+    else r._first=first;
+  }
+  if(!r.ok){
+    const t=await r.text();
+    let msg=t;
+    try{ msg=JSON.parse(t).error?.message||t; }catch{}
+    throw new Error(`${r.status}：${String(msg).slice(0,160)}`);
+  }
+  const j=await r.json();
+  if(!j.audioContent) throw new Error("音声データが空で返ってきました");
+  const bin=atob(j.audioContent);
+  const u8=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  return u8;
+}
+async function tts(text){
+  const u8=await ttsBytes(text);
+  try{ return await AC().decodeAudioData(u8.buffer.slice(0)); }
+  catch(e){ throw new Error("音声の読み込みに失敗しました："+(e.message||e)); }
+}
+async function makeVoices(prog){
+  const need=P.pages.filter(p=>speechOf(p)&&!audio.has(keyOf(p)));
+  if(!need.length) return true;
+  let i=0, ok=true;
+  for(const p of need){
+    try{
+      const b=await tts(speechOf(p));
+      audio.set(keyOf(p),{buf:b,dur:b.duration});
+      log(`音声 ${i+1}/${need.length}  ${b.duration.toFixed(1)}秒`);
+    }catch(e){ ok=false; log("音声の失敗："+e.message,"e"); }
+    prog&&prog(++i/need.length);
+  }
+  return ok;
+}
+
+/* ══════════ 10. 書き出し ══════════ */
+let wakeLock=null;
+async function keepAwake(on){
+  try{
+    if(on){ if("wakeLock" in navigator) wakeLock=await navigator.wakeLock.request("screen"); }
+    else { wakeLock&&wakeLock.release(); wakeLock=null; }
+  }catch{}
+}
+const loadScript=src=>new Promise((res,rej)=>{
+  const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+
+async function runExport(){
+  if(!S.ttsKey){ openSettings(); setTimeout(()=>alert("先に設定で Google Cloud TTS の APIキーを入れてください。"),200); return; }
+  $("#run").hidden=false; $("#lg").innerHTML=""; $("#res").hidden=true;
+  $("#run-a").hidden=true; $("#run-b").hidden=true; $("#run-c").hidden=true;
+  $("#run-w").hidden=false; setPct(0); st("音声を作っています…");
+  await keepAwake(true);
+  document.addEventListener("visibilitychange",onHide);
+  try{
+    await AC().resume();
+    const okv=await makeVoices(p=>setPct(p*0.25));
+    if(!okv) log("一部の音声が作れませんでした。その部分は無音になります。","w");
+    const tl=timeline();
+    const T=tl.reduce((a,c)=>a+c.dur,0);
+    log(`全体 ${fmt(T)} ／ ${tl.length} ページ`,"s");
+    st("動画を組み立てています…");
+    let blob;
+    try{
+      if(forceRec) throw new Error("録画方式を指定");
+      blob=await encodeWebCodecs(tl,T,p=>setPct(0.25+p*0.72));
+      log("方式：WebCodecs（高速）","s");
+    }
+    catch(e){
+      log("高速方式が使えないため通常方式に切り替えます："+e.message,"w");
+      st("動画を録画しています（実時間・画面を見たままお待ちください）…");
+      blob=await encodeRecorder(tl,T,p=>setPct(0.25+p*0.72));
+      log("方式：MediaRecorder（実時間）","s");
+    }
+    setPct(1); st("完成しました");
+    finish(blob,T);
+  }catch(e){
+    log("失敗しました："+e.message,"e"); st("失敗しました");
+    $("#run-b").hidden=false;
+  }finally{
+    document.removeEventListener("visibilitychange",onHide);
+    await keepAwake(false);
+  }
+}
+const onHide=()=>{ if(document.hidden) log("画面を離れました。戻ると再開しますが、失敗した場合はもう一度お試しください。","w"); };
+
+/* ── 10a. WebCodecs（高速・非実時間） ── */
+async function encodeWebCodecs(tl,T,prog){
+  if(!window.VideoEncoder||!window.AudioEncoder) throw new Error("WebCodecs非対応");
+  if(!window.Mp4Muxer) await loadScript("https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js");
+  if(!window.Mp4Muxer) throw new Error("muxer読み込み失敗");
+
+  const W=Number(S.width), H=Number(S.height), fps=Number(S.fps);
+  const audioBits=64000;
+  const videoBits=Math.max(4e5,Math.min(3.2e6,
+    (Number(S.targetMB)*8*1048576 - audioBits*T)/Math.max(1,T)));
+  log(`720p / ${(videoBits/1e6).toFixed(2)} Mbps で作ります`);
+
+  const M=window.Mp4Muxer;
+  const muxer=new M.Muxer({
+    target:new M.ArrayBufferTarget(),
+    video:{codec:"avc",width:W,height:H},
+    audio:{codec:"aac",sampleRate:48000,numberOfChannels:1},
+    fastStart:"in-memory",
+  });
+  let vErr=null,aErr=null,vChunks=0,aChunks=0,aenc2=null;
+  const venc=new VideoEncoder({
+    output:(c,m)=>{vChunks++;muxer.addVideoChunk(c,m);},
+    error:e=>{vErr=e;log("映像エンコーダ："+(e.message||e),"e");}});
+  venc.configure({codec:"avc1.42001F",width:W,height:H,bitrate:videoBits,framerate:fps});
+  const aenc=new AudioEncoder({
+    output:(c,m)=>{aChunks++;muxer.addAudioChunk(c,m);},
+    error:e=>{aErr=e;log("音声エンコーダ："+(e.message||e),"e");}});
+  aenc.configure({codec:"mp4a.40.2",sampleRate:48000,numberOfChannels:1,bitrate:audioBits});
+
+  // ── 先に音声を作って入れておく（後入れだと取りこぼす環境があるため） ──
+  st("音声を合わせています…");
+  await encodeAudio(tl,T,()=>{});
+
+  const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  const g=cv.getContext("2d",{alpha:false});
+
+  // ── 映像 ──
+  const totalFrames=Math.ceil(T*fps);
+  let f=0;
+  for(const c of tl){
+    const n=Math.max(1,Math.round(c.dur*fps));
+    const vid=(c.media&&c.media.kind==="video")?c.media.el:null;
+    if(vid){ try{ await vid.play(); vid.pause(); }catch{} }
+    for(let i=0;i<n;i++){
+      if(vid){
+        const start=c.p.trimStart||0, end=c.p.trimEnd||c.media.dur;
+        let tv=start+(i/fps);
+        if(tv>end) tv=end-0.03;
+        await seek(vid,tv);
+      }
+      draw(g,W,H,W/1280,c.p,c.start+i/fps);
+      const frame=new VideoFrame(cv,{timestamp:Math.round(f*1e6/fps),duration:Math.round(1e6/fps)});
+      venc.encode(frame,{keyFrame:i===0});
+      frame.close();
+      f++;
+      if(f%15===0) prog(f/totalFrames*0.92);
+      if(f%30===0) await new Promise(r=>setTimeout(r,0));
+      if(venc.encodeQueueSize>24) await new Promise(r=>setTimeout(r,12));
+    }
+  }
+  await venc.flush(); venc.close();
+
+  if(vErr) throw new Error("映像の書き出しに失敗："+(vErr.message||vErr));
+  log(`映像 ${vChunks} 個を書き出しました`);
+  muxer.finalize();
+  prog(1);
+  return new Blob([muxer.target.buffer],{type:"video/mp4"});
+
+  async function encodeAudio(tl,T,prog){
+  const SR=48000, total=Math.max(SR,Math.ceil(T*SR));
+  const nVoice=tl.filter(c=>audio.has(keyOf(c.p))).length;
+  log(`読み上げ ${nVoice} 本を ${fmt(T)} に配置します`);
+  let pcm;
+  try{
+    const off=new OfflineAudioContext(1,total,SR);
+    for(const c of tl){
+      const a=audio.get(keyOf(c.p)); if(!a) continue;
+      const src=off.createBufferSource(); src.buffer=a.buf; src.connect(off.destination);
+      src.start(Math.max(0,c.start));
+    }
+    const mixed=await off.startRendering();
+    pcm=mixed.getChannelData(0);
+  }catch(e){ throw new Error("音声のミックスに失敗："+(e.message||e)); }
+
+  lastPCM=pcm; lastSR=SR;
+  let peak=0;
+  for(let i=0;i<pcm.length;i+=97) peak=Math.max(peak,Math.abs(pcm[i]));
+  log(`音声の大きさ ${(peak*100).toFixed(0)}%`, peak<0.01?"e":"s");
+  if(peak<0.01) log("音声データが無音です。読み上げ文が入っているか確認してください。","w");
+
+  // AAC は 1024 フレーム単位。端数はゼロ埋めして必ず 1024 で渡す
+  const CH=1024;
+  const frames=Math.ceil(pcm.length/CH);
+  let fmtUsed="f32-planar", triedAlt=false;
+  for(let k=0;k<frames;k++){
+    if(aErr&&!triedAlt){                       // 形式が合わない場合の入れ替え
+      triedAlt=true; aErr=null; fmtUsed="f32";
+      log("音声の形式を切り替えて再試行します","w");
+      try{ aenc.close(); }catch{}
+      aChunks=0; k=-1;
+      const a2=new AudioEncoder({
+        output:(c,m)=>{aChunks++;muxer.addAudioChunk(c,m);},
+        error:e=>{aErr=e;log("音声エンコーダ："+(e.message||e),"e");}});
+      a2.configure({codec:"mp4a.40.2",sampleRate:SR,numberOfChannels:1,bitrate:audioBits});
+      aenc2=a2; continue;
+    }
+    const enc=aenc2||aenc;
+    const seg=new Float32Array(CH);
+    const off2=k*CH;
+    seg.set(pcm.subarray(off2,Math.min(off2+CH,pcm.length)));
+    const data=new AudioData({
+      format:fmtUsed,sampleRate:SR,numberOfFrames:CH,numberOfChannels:1,
+      timestamp:Math.round(off2/SR*1e6),data:seg});
+    try{ enc.encode(data); }catch(e){ aErr=e; }
+    data.close();
+    if(k%120===0){ prog(0.95+0.04*(k/frames)); await new Promise(r=>setTimeout(r,0)); }
+    if(enc.encodeQueueSize>60) await new Promise(r=>setTimeout(r,10));
+  }
+  const encF=aenc2||aenc;
+  try{ await encF.flush(); encF.close(); }catch(e){ aErr=aErr||e; }
+  log(`音声 ${aChunks} 個を書き出しました`, aChunks?"s":"e");
+  if(!aChunks){
+    throw new Error("音声を動画に入れられませんでした"+(aErr?("："+(aErr.message||aErr)):""));
+  }
+  }
+}
+const seek=(v,t)=>new Promise(res=>{
+  if(Math.abs(v.currentTime-t)<0.005) return res();
+  let done=false;
+  const on=()=>{if(done)return;done=true;v.removeEventListener("seeked",on);res();};
+  v.addEventListener("seeked",on);
+  try{v.currentTime=t;}catch{on();}
+  setTimeout(on,220);
+});
+
+/* ── 10b. MediaRecorder（保険・実時間） ── */
+async function encodeRecorder(tl,T,prog){
+  const W=Number(S.width),H=Number(S.height),fps=Number(S.fps);
+  const cv=document.createElement("canvas");cv.width=W;cv.height=H;
+  const g=cv.getContext("2d",{alpha:false});
+  const mimes=['video/mp4;codecs="avc1.42001F,mp4a.40.2"','video/mp4',
+    'video/webm;codecs=vp9,opus','video/webm'];
+  const mime=mimes.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
+  if(!mime) throw new Error("録画に対応していません");
+  const ac=AC(); await ac.resume();
+  const dest=ac.createMediaStreamDestination();
+  const stream=new MediaStream([...cv.captureStream(fps).getVideoTracks(),...dest.stream.getAudioTracks()]);
+  const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:1.2e6});
+  const parts=[]; rec.ondataavailable=e=>e.data.size&&parts.push(e.data);
+  const stopped=new Promise(r=>{rec.onstop=r;});
+  for(const c of tl) if(c.media&&c.media.kind==="video"){
+    try{await c.media.el.play();c.media.el.pause();}catch{}
+    c.media.el.currentTime=c.p.trimStart||0;
+  }
+  draw(g,W,H,W/1280,tl[0].p,0);
+  rec.start(1000);
+  const t0=ac.currentTime+0.2;
+  for(const c of tl){ const a=audio.get(keyOf(c.p)); if(!a) continue;
+    const s=ac.createBufferSource();s.buffer=a.buf;s.connect(dest);s.start(t0+c.start);}
+  const started=new Set();
+  await new Promise(done=>{
+    (function loop(){
+      const t=ac.currentTime-t0;
+      if(t>=T){done();return;}
+      if(t>=0){
+        let c=tl[0]; for(const x of tl) if(t>=x.start) c=x;
+        if(c.media&&c.media.kind==="video"){
+          if(!started.has(c.p.id)){started.add(c.p.id);
+            c.media.el.currentTime=c.p.trimStart||0;c.media.el.play().catch(()=>{});}
+          if(c.media.el.currentTime>=(c.p.trimEnd||c.media.dur)-0.05) c.media.el.pause();
+        }
+        draw(g,W,H,W/1280,c.p,t); prog(t/T);
+      }
+      requestAnimationFrame(loop);})();});
+  for(const c of tl) if(c.media&&c.media.kind==="video") c.media.el.pause();
+  rec.stop();
+  await Promise.race([stopped,new Promise(r=>setTimeout(r,4000))]);
+  if(!parts.length) throw new Error("録画データが空でした");
+  return new Blob(parts,{type:mime.split(";")[0]});
+}
+
+/* ── 10c. 完成後 ── */
+let outFile=null, lastPCM=null, lastSR=48000, forceRec=false;
+function finish(blob,T){
+  const mb=blob.size/1048576;
+  log(`完成：${mb.toFixed(1)} MB ／ ${fmt(T)}`,"s");
+  if(mb>24) log("25MBを超えました。Gmailでは自動的にDriveリンクになります。","w");
+  const name=(P.meta.title||"改善提案").replace(/[\\/:*?"<>|]/g,"_")+".mp4";
+  outFile=new File([blob],name,{type:"video/mp4"});
+  const v=$("#res"); v.hidden=false; v.src=URL.createObjectURL(blob);
+  $("#run-w").hidden=true;
+  $("#run-a").hidden=false; $("#run-b").hidden=false; $("#run-c").hidden=false;
+  $("#a-snd").onclick=playMixed;
+  $("#a-again").onclick=()=>{forceRec=true;runExport();};
+  $("#a-play").onclick=()=>{ v.scrollIntoView({block:"center"}); v.play().catch(()=>{}); };
+  $("#a-save").onclick=()=>sendVia("save");
+  $("#a-mail").onclick=()=>sendVia("mail");
+}
+const canShareFile=f=>!!(navigator.canShare&&navigator.canShare({files:[f]}));
+
+function pcmToWav(pcm,sr){
+  const n=pcm.length, buf=new ArrayBuffer(44+n*2), v=new DataView(buf);
+  const put=(o,str)=>{for(let i=0;i<str.length;i++)v.setUint8(o+i,str.charCodeAt(i));};
+  put(0,"RIFF"); v.setUint32(4,36+n*2,true); put(8,"WAVEfmt ");
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true);
+  v.setUint16(34,16,true); put(36,"data"); v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){
+    let x=Math.max(-1,Math.min(1,pcm[i]));
+    v.setInt16(44+i*2,x<0?x*0x8000:x*0x7FFF,true);
+  }
+  return new Blob([buf],{type:"audio/wav"});
+}
+let checkAudio=null;
+function playMixed(){
+  if(!lastPCM){ log("確認できる音声がありません","w"); return; }
+  const url=URL.createObjectURL(pcmToWav(lastPCM,lastSR));
+  if(!checkAudio){ checkAudio=new Audio(); checkAudio.setAttribute("playsinline",""); }
+  checkAudio.src=url; checkAudio.play()
+    .then(()=>log("動画に入れた音声そのものを再生しています。これが聞こえるなら音は作れています。","s"))
+    .catch(e=>log("再生できません："+(e.message||e),"e"));
+}
+
+async function sendVia(how){
+  if(!outFile) return;
+  if(how==="mail"&&S.mailTo){
+    try{ await navigator.clipboard.writeText(S.mailTo);
+      log("宛先をコピーしました："+S.mailTo,"s"); }catch{}
+  }
+  if(canShareFile(outFile)){
+    try{
+      await navigator.share({
+        files:[outFile],
+        title:P.meta.title||"改善提案",
+        text:how==="mail"
+          ?`${P.meta.title||"改善提案"}\n${S.mailTo?"宛先："+S.mailTo:""}`
+          :undefined,
+      });
+      log(how==="save"
+        ?"共有メニューの「ビデオを保存」で写真アプリに入ります。"
+        :"共有メニューのメールアプリを選ぶと動画が添付されます。","s");
+      return;
+    }catch(e){ if(e.name==="AbortError") return; log("共有できませんでした："+e.message,"w"); }
+  }
+  if(how==="mail"&&S.mailTo){
+    const sub=encodeURIComponent(P.meta.title||"改善提案");
+    const body=encodeURIComponent("改善提案の動画を送ります。\n（動画は端末に保存したファイルを添付してください）");
+    location.href=`mailto:${encodeURIComponent(S.mailTo)}?subject=${sub}&body=${body}`;
+    return;
+  }
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(outFile); a.download=outFile.name; a.click();
+  log("ファイルとして保存しました。","s");
+}
+
+/* ══════════ 11. 設定 ══════════ */
+function openSettings(){
+  const o=(v,l,c)=>`<option value="${v}"${String(c)===String(v)?" selected":""}>${l}</option>`;
+  $("#sheet-in").innerHTML=`
+  <h2>設定<button id="s-x">完了</button></h2>
+  <div class="card"><h3>音声（Google Cloud TTS）</h3>
+    <label class="f"><span>APIキー<em>ナビと同じキーが使えます</em></span>
+      <input type="password" data-s="ttsKey" value="${esc(S.ttsKey)}" placeholder="AIza..."></label>
+    <label class="f"><span>ナレーターの性別</span>
+      <div class="chips">
+        <button class="chip" data-gen="f" aria-pressed="${genderOf(S.ttsVoice)==="f"}">女性</button>
+        <button class="chip" data-gen="m" aria-pressed="${genderOf(S.ttsVoice)==="m"}">男性</button>
+      </div></label>
+    <label class="f"><span>声</span><select data-s="ttsVoice">
+      ${["hd","n2","wn","st"].map(t=>{
+        const list=VOICES.filter(v=>v[3]===t&&v[2]===genderOf(S.ttsVoice));
+        return list.length?`<optgroup label="${TIERS[t]}">${list.map(v=>o(v[0],v[1],S.ttsVoice)).join("")}</optgroup>`:"";
+      }).join("")}</select></label>
+    <div class="g2">
+      <label class="f"><span>話す速さ</span><input type="number" step="0.05" min="0.5" max="1.6" inputmode="decimal" data-s="ttsRate" value="${S.ttsRate}"></label>
+      <label class="f"><span>声の高さ${isChirp(S.ttsVoice)?"<em>この声は非対応</em>":""}</span>
+        <input type="number" step="0.5" min="-8" max="8" inputmode="decimal" data-s="ttsPitch" value="${S.ttsPitch}" ${isChirp(S.ttsVoice)?"disabled":""}></label>
+    </div>
+    <div class="rowbtns"><button class="sm" id="s-test">この声を試聴する</button></div>
+    <p class="hint" id="s-msg" style="min-height:1.7em"></p>
+    <p class="hint">${isChirp(S.ttsVoice)
+      ? "Chirp3 HD は現在いちばん自然な音声です。声の高さの調整には対応していません。"
+      : "Neural2 は速度も高さも細かく調整できます。"}
+      キーはこのiPhoneの中にだけ保存されます。</p>
+  </div>
+
+  <div class="card"><h3>チャージ設定</h3>
+    <div class="g2">
+      <label class="f"><span>機械チャージ<em>円／時</em></span><input type="number" inputmode="numeric" data-s="chargeMachine" value="${S.chargeMachine}"></label>
+      <label class="f"><span>マンチャージ<em>円／時</em></span><input type="number" inputmode="numeric" data-s="chargeMan" value="${S.chargeMan}"></label>
+    </div>
+    <label class="f" style="margin-top:9px"><span>年間稼働月数</span>
+      <input type="number" min="1" max="12" inputmode="numeric" data-s="months" value="${S.months}"></label>
+  </div>
+
+  <div class="card"><h3>字幕</h3>
+    <div class="g2">
+      <label class="f"><span>大きさ</span><input type="number" min="24" max="72" inputmode="numeric" data-s="subSize" value="${S.subSize}"></label>
+      <label class="f"><span>見せ方</span><select data-s="subStyle">
+        ${o("outline","黒フチ",S.subStyle)}${o("band","半透明の帯",S.subStyle)}${o("none","なし",S.subStyle)}</select></label>
+    </div>
+    <div class="g2" style="margin-top:9px">
+      <label class="f"><span>色</span><input type="color" data-s="subColor" value="${S.subColor}"></label>
+      <label class="f"><span>最大行数</span><input type="number" min="1" max="3" inputmode="numeric" data-s="subMaxLines" value="${S.subMaxLines}"></label>
+    </div>
+  </div>
+
+  <div class="card"><h3>見た目</h3>
+    <div class="g2">
+      <label class="f"><span>イメージカラー<em>下線・見出しの色</em></span>
+        <input type="color" data-s="accent" value="${S.accent}"></label>
+      <label class="f"><span>資料の配色</span><select data-s="theme">
+        ${o("light","ライト",S.theme)}${o("dark","ダーク",S.theme)}</select></label>
+    </div>
+    <div class="chips" style="margin-top:9px">
+      ${[["#1f7a4d","緑"],["#1f5f9e","青"],["#9e5a1f","茶"],["#8a1f3d","臙脂"],["#3a3f45","墨"]]
+        .map(([c,n])=>`<button class="chip" data-ac="${c}" aria-pressed="${S.accent===c}"
+          style="border-left:6px solid ${c}">${n}</button>`).join("")}
+    </div>
+  </div>
+
+  <div class="card"><h3>動画</h3>
+    <div class="g2">
+      <label class="f"><span>目標サイズ<em>MB</em></span><input type="number" min="8" max="200" inputmode="numeric" data-s="targetMB" value="${S.targetMB}"></label>
+      <label class="f"><span>目安の尺<em>秒</em></span><input type="number" inputmode="numeric" data-s="maxSec" value="${S.maxSec}"></label>
+      <label class="f"><span>目標サイズ<em>MB</em></span><input type="number" min="8" max="200" inputmode="numeric" data-s="targetMB" value="${S.targetMB}"></label>
+    </div>
+    <div class="g2" style="margin-top:9px">
+      <label class="f"><span>読み上げ後の間<em>既定・秒</em></span><input type="number" step="0.1" inputmode="decimal" data-s="pad" value="${S.pad}"></label>
+      <label class="f"><span>無音ページの長さ<em>既定・秒</em></span><input type="number" step="0.5" inputmode="decimal" data-s="silentSec" value="${S.silentSec}"></label>
+    </div>
+    <p class="hint">ここは新しいページの初期値です。ページごとの調整は各画面の「読み上げの後の間」で行えます。Gmailに直接添付するなら24MB以下にしてください。</p>
+  </div>
+
+  <div class="card"><h3>動画の送り先</h3>
+    <label class="f"><span>メールアドレス<em>提出先など</em></span>
+      <input type="email" inputmode="email" autocapitalize="off" data-s="mailTo"
+        value="${esc(S.mailTo)}" placeholder="example@gmail.com"></label>
+    <p class="hint">完成後の「メール送信」で宛先に使います。iOSの仕様上、共有シートから送る場合は宛先が自動で入らないことがあるため、そのときはアドレスをコピーできるようにしてあります。</p>
+  </div>
+
+  <div class="card"><h3>定型</h3>
+    <label class="f"><span>締めの文</span><input data-s="closingText" value="${esc(S.closingText)}"></label>
+    <label class="f"><span>会社名・工場名</span><input data-s="orgName" value="${esc(S.orgName)}" placeholder="タイトルに表示"></label>
+    <div class="rowbtns">
+      <button class="sm" id="s-exp">保存</button>
+      <button class="sm" id="s-imp">読込</button>
+      <button class="sm warn" id="s-rst">初期値</button>
+    </div>
+  </div>`;
+  $("#sheet").hidden=false;
+  const NUM=["ttsRate","ttsPitch","subSize","subMaxLines","chargeMachine","chargeMan","months",
+    "targetMB","silentSec","maxSec","pad"];
+  $("#sheet-in").querySelectorAll("[data-s]").forEach(e=>e.oninput=()=>{
+    const k=e.dataset.s;
+    S[k]=NUM.includes(k)?Number(e.value):e.value;
+    if(k==="ttsVoice"||k==="ttsRate"||k==="ttsPitch") audio.clear();
+    save(); drawGauge();
+    if(k==="ttsVoice") openSettings();});
+  $("#sheet-in").querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
+    S.accent=b.dataset.ac; save(); openSettings();});
+  $("#sheet-in").querySelectorAll("[data-gen]").forEach(b=>b.onclick=()=>{
+    const g=b.dataset.gen;
+    if(genderOf(S.ttsVoice)===g) return;
+    const tier=vRec(S.ttsVoice)[3];
+    const same=VOICES.find(v=>v[2]===g&&v[3]===tier)||VOICES.find(v=>v[2]===g);
+    S.ttsVoice=same[0]; audio.clear(); save(); openSettings();});
+  $("#s-x").onclick=()=>{$("#sheet").hidden=true;paint();};
+  $("#s-test").onclick=testVoice;
+  $("#s-exp").onclick=exportP;
+  $("#s-imp").onclick=()=>$("#pp").click();
+  $("#s-rst").onclick=()=>{if(confirm("設定を初期値に戻します。")){const k=S.ttsKey;S={...DEFAULTS,ttsKey:k};save();openSettings();}};
+}
+let testAudio=null;
+function smsg(t,cls){
+  const e=$("#s-msg"); if(!e) return;
+  e.textContent=t; e.className="hint "+(cls||"");
+  e.style.color = cls==="err" ? "var(--stamp)" : cls==="ok" ? "var(--go)" : "var(--muted)";
+}
+async function testVoice(){
+  const b=$("#s-test"); const orig="この声を試聴する";
+  b.textContent="作っています…"; b.disabled=true; smsg("Googleに問い合わせています…");
+  try{
+    const u8=await ttsBytes("改善前は、芯出しに毎回15分かかっていました。");
+    smsg(`受信 ${(u8.length/1024).toFixed(0)} KB — 再生します`,"ok");
+    const url=URL.createObjectURL(new Blob([u8],{type:"audio/wav"}));
+    if(!testAudio){ testAudio=new Audio(); testAudio.setAttribute("playsinline",""); }
+    testAudio.src=url; testAudio.volume=1;
+    await testAudio.play();
+    smsg("再生中。聞こえない場合は本体側面のマナースイッチと音量を確認してください。","ok");
+  }catch(e){
+    smsg("失敗："+(e.message||e),"err");
+    log("試聴の失敗："+(e.message||e),"e");
+  }
+  b.textContent=orig; b.disabled=false;
+}
+
+/* ══════════ 12. 保存・読込 ══════════ */
+const b64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(b);});
+async function exportP(){
+  const out={v:1,settings:{...S,ttsKey:""},project:P,media:{}};
+  for(const p of P.pages) if(p.mediaId&&media.has(p.mediaId))
+    out.media[p.mediaId]=await b64(media.get(p.mediaId).blob);
+  const b=new Blob([JSON.stringify(out)],{type:"application/json"});
+  const f=new File([b],(P.meta.title||"改善提案")+".teian.json",{type:"application/json"});
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[f]})){ await navigator.share({files:[f]}); return; }
+  }catch{}
+  const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();
+}
+async function importP(file){
+  const j=JSON.parse(await file.text());
+  S={...DEFAULTS,...j.settings,ttsKey:S.ttsKey}; P=j.project; media.clear(); audio.clear();
+  for(const [id,u] of Object.entries(j.media||{})){
+    const b=await(await fetch(u)).blob();
+    await putB(id,b); await link(id,b,b.type.startsWith("video/")?"video":"image");
+  }
+  cur=0; save(); $("#sheet").hidden=true; paint();
+}
+
+/* ══════════ 13. 配線 ══════════ */
+function log(t,c){const l=$("#lg"),d=document.createElement("div");if(c)d.className=c;
+  d.textContent=t;l.appendChild(d);l.scrollTop=l.scrollHeight;}
+const st=t=>$("#run-s").textContent=t;
+function setPct(p){
+  p=Math.max(0,Math.min(1,p));
+  $("#pct").textContent=Math.round(p*100)+"%";
+  $("#arc").setAttribute("stroke-dashoffset",364.4*(1-p));
+}
+$("#b-prev").onclick=()=>go(cur-1);
+$("#b-set").onclick=openSettings;
+$("#sheet").onclick=e=>{if(e.target.id==="sheet")  {$("#sheet").hidden=true;paint();}};
+$("#zoom").onclick=()=>$("#zoom").hidden=true;
+$("#a-close").onclick=()=>{$("#run").hidden=true;$("#run-b").hidden=true;$("#run-c").hidden=true;forceRec=false;paint();};
+$("#pp").onchange=e=>e.target.files[0]&&importP(e.target.files[0]);
+$("#fp").onchange=async e=>{
+  const p=P.pages.find(x=>x.id===e.target.dataset.pid);
+  if(p&&e.target.files[0]) await attachFile(p,e.target.files[0]);
+  e.target.value=""; save(); paint();};
+$("#fpm").onchange=async e=>{
+  const p=P.pages.find(x=>x.id===e.target.dataset.pid);
+  if(p){ let anchor=p;
+    for(const f of e.target.files){ const np=await attachFile(p,f,anchor); if(np) anchor=np; }
+    cur=P.pages.indexOf(anchor);
+  }
+  e.target.value=""; save(); paint();};
+
+function unlockAudio(){
+  try{
+    const ac=AC(); ac.resume();
+    const b=ac.createBuffer(1,1,22050);
+    const s=ac.createBufferSource(); s.buffer=b; s.connect(ac.destination); s.start(0);
+  }catch{}
+  document.removeEventListener("touchend",unlockAudio);
+  document.removeEventListener("click",unlockAudio);
+}
+document.addEventListener("touchend",unlockAudio,{once:false});
+document.addEventListener("click",unlockAudio,{once:false});
+
+(async function(){
+  await openDB(); load(); await restore();
+  paint();
+  if(!S.ttsKey) setTimeout(()=>{
+    if(confirm("最初に音声のAPIキーを設定しますか？\n（あとで設定からでも入力できます）")) openSettings();
+  },600);
+})();
+</script>
+</body>
+</html>
