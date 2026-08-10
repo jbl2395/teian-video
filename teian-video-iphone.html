@@ -44,12 +44,12 @@ header button:active{background:#2a333a}
 .gline{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px}
 .gline b{font-weight:600;color:var(--ink);font-size:13px}
 .gline .over{color:var(--warn)}
-.gbar{position:relative;height:14px;background:#f6faf6;border:1px solid #cadfcd;border-radius:7px;overflow:hidden;display:flex}
+.gbar{position:relative;height:14px;background:#f2f7f2;border:1px solid #b6d6bd;border-radius:7px;overflow:hidden;display:flex}
 .gbar .sg{min-width:2px;border-right:1px solid rgba(255,255,255,.85)}
-.gbar .sg[data-k=photo]{background:#9ad9ab}
-.gbar .sg[data-k=movie]{background:#74c795}
-.gbar .sg[data-k=slide]{background:#c2e7c9}
-.gbar .sg[data-k=mute]{background:#e0eee1}
+.gbar .sg[data-k=photo]{background:#3f9e69}
+.gbar .sg[data-k=movie]{background:#1f7a4d}
+.gbar .sg[data-k=slide]{background:#72c295}
+.gbar .sg[data-k=mute]{background:#aed7bb}
 .gbar .rest{flex:1}
 .gbar .lim{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--warn);opacity:.85}
 
@@ -112,6 +112,7 @@ input,textarea,select{
 select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
   background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px;background-repeat:no-repeat}
 input:focus,textarea:focus,select:focus{outline:2px solid var(--go);outline-offset:-2px;border-color:var(--go)}
+input[type=color]{height:46px;padding:4px 5px}
 textarea{min-height:64px;resize:none;line-height:1.65}
 .show textarea{background:#fffdf5;border-color:#ddd5bd}
 .say textarea{background:#f4faf6;border-color:#c4ddd0}
@@ -264,12 +265,14 @@ const layoutOf=p=>p.layout||"photo";
 const hasPhoto=p=>layoutOf(p)!=="text";
 
 const DEFAULTS={
-  ttsKey:"", ttsVoice:"ja-JP-Chirp3-HD-Aoede", ttsRate:1.0, ttsPitch:0,
+  ttsKey:"", ttsVoice:"ja-JP-Chirp3-HD-Orus", ttsRate:1.0, ttsPitch:0,
+  // 性別を切り替えても、その性別で最後に選んだ声に戻る
+  voiceMemo:{f:"ja-JP-Chirp3-HD-Aoede",m:"ja-JP-Chirp3-HD-Orus"},
   accent:"#1f7a4d", mailTo:"",
   width:1280, height:720, fps:30, targetMB:24, maxSec:210,
   subSize:44, subColor:"#ffffff", subStyle:"outline", subBottom:7, subMaxLines:2,
   theme:"light", silentSec:2.5, pad:0.3,
-  chargeMachine:4800, chargeMan:3200, months:12,
+  chargeMachine:"", chargeMan:"", months:12,
   closingText:"ご清聴ありがとうございました", orgName:"",
   presenterName:"", deptName:"",
   readFixes:[
@@ -374,6 +377,8 @@ function load(){
 }
 function migrate(){
   if(!Array.isArray(S.readFixes)) S.readFixes=DEFAULTS.readFixes.map(r=>({...r}));
+  if(!S.voiceMemo||typeof S.voiceMemo!=="object") S.voiceMemo={...DEFAULTS.voiceMemo};
+  S.voiceMemo={...DEFAULTS.voiceMemo,...S.voiceMemo,[genderOf(S.ttsVoice)]:S.ttsVoice};
   const c={...blankCost(),...(P.cost||{})};
   if("before" in c || "basis" in c){          // 旧：機械／人が一体だった頃の値を引き継ぐ
     if(c.mBefore===""&&c.hBefore===""){
@@ -1177,6 +1182,7 @@ async function runExport(){
   if(!S.ttsKey){ openSettings(); setTimeout(()=>alert("先に設定で Google Cloud TTS の APIキーを入れてください。"),200); return; }
   $("#run").hidden=false; $("#lg").innerHTML=""; $("#res").hidden=true;
   $("#run-a").hidden=true; $("#run-b").hidden=true; $("#run-c").hidden=true;
+  $("#run-w").innerHTML="この画面を表示したままお待ちください。<br>他のアプリに切り替えると止まります。";
   $("#run-w").hidden=false; setPct(0); st("音声を作っています…");
   await keepAwake(true);
   document.addEventListener("visibilitychange",onHide);
@@ -1442,18 +1448,22 @@ function playMixed(){
 
 async function sendVia(how){
   if(!outFile) return;
+  let copied=false;
   if(how==="mail"&&S.mailTo){
-    try{ await navigator.clipboard.writeText(S.mailTo);
+    try{ await navigator.clipboard.writeText(S.mailTo); copied=true;
       log("宛先をコピーしました："+S.mailTo,"s"); }catch{}
+    // iOSの共有シートには宛先を渡す手段がないため、貼り付け方を画面に出す
+    $("#run-w").innerHTML=copied
+      ? `宛先 <b>${esc(S.mailTo)}</b> をコピーしました。<br>メールの「To」を長押し →「ペースト」で入ります。`
+      : `メールの「To」に <b>${esc(S.mailTo)}</b> を入力してください。`;
+    $("#run-w").hidden=false;
   }
   if(canShareFile(outFile)){
     try{
       await navigator.share({
         files:[outFile],
         title:P.meta.title||"改善提案",
-        text:how==="mail"
-          ?`${P.meta.title||"改善提案"}\n${S.mailTo?"宛先："+S.mailTo:""}`
-          :undefined,
+        text:how==="mail"?(P.meta.title||"改善提案"):undefined,
       });
       log(how==="save"
         ?"共有メニューの「ビデオを保存」で写真アプリに入ります。"
@@ -1525,8 +1535,8 @@ function openSettings(){
 
   <div class="card"><h3>チャージ設定</h3>
     <div class="g2">
-      <label class="f"><span>機械チャージ<em>円／時</em></span><input type="number" inputmode="numeric" data-s="chargeMachine" value="${S.chargeMachine}"></label>
-      <label class="f"><span>マンチャージ<em>円／時</em></span><input type="number" inputmode="numeric" data-s="chargeMan" value="${S.chargeMan}"></label>
+      <label class="f"><span>機械チャージ<em>円／時</em></span><input type="number" inputmode="numeric" data-s="chargeMachine" value="${S.chargeMachine}" placeholder="4800"></label>
+      <label class="f"><span>マンチャージ<em>円／時</em></span><input type="number" inputmode="numeric" data-s="chargeMan" value="${S.chargeMan}" placeholder="3200"></label>
     </div>
     <label class="f" style="margin-top:9px"><span>年間稼働月数</span>
       <input type="number" min="1" max="12" inputmode="numeric" data-s="months" value="${S.months}"></label>
@@ -1591,8 +1601,9 @@ function openSettings(){
     "targetMB","silentSec","maxSec","pad"];
   $("#sheet-in").querySelectorAll("[data-s]").forEach(e=>e.oninput=()=>{
     const k=e.dataset.s;
-    S[k]=NUM.includes(k)?Number(e.value):e.value;
-    if(k==="ttsVoice"||k==="ttsRate"||k==="ttsPitch") audio.clear();
+    S[k]=NUM.includes(k)?(e.value===""?"":Number(e.value)):e.value;   // 空欄は空欄のまま
+    if(k==="ttsVoice"){ audio.clear(); S.voiceMemo={...S.voiceMemo,[genderOf(e.value)]:e.value}; }
+    if(k==="ttsRate"||k==="ttsPitch") audio.clear();
     // ⑤(a) チャージ単価・稼働月数を変えたら効果ページをその場で作り直す
     if(k==="chargeMachine"||k==="chargeMan"||k==="months") refreshCost();
     if(k==="deptName"||k==="presenterName") syncTitle();
@@ -1611,9 +1622,14 @@ function openSettings(){
   $("#sheet-in").querySelectorAll("[data-gen]").forEach(b=>b.onclick=()=>{
     const g=b.dataset.gen;
     if(genderOf(S.ttsVoice)===g) return;
+    // その性別で前に選んでいた声を思い出す
+    const memo=S.voiceMemo&&S.voiceMemo[g];
+    const keep=memo&&vRec(memo)[2]===g?memo:null;
     const tier=vRec(S.ttsVoice)[3];
     const same=VOICES.find(v=>v[2]===g&&v[3]===tier)||VOICES.find(v=>v[2]===g);
-    S.ttsVoice=same[0]; audio.clear(); save(); openSettings();});
+    S.ttsVoice=keep||same[0];
+    S.voiceMemo={...S.voiceMemo,[g]:S.ttsVoice};
+    audio.clear(); save(); openSettings();});
   $("#s-x").onclick=()=>{$("#sheet").hidden=true;paint();};
   $("#s-test").onclick=testVoice;
   $("#s-exp").onclick=exportP;
