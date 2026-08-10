@@ -137,6 +137,11 @@ input[type=number],.num{font-family:"SF Mono",ui-monospace,monospace;text-align:
 .formula .amt{margin-top:7px;padding-top:7px;border-top:1px solid var(--rule2)}
 .formula .amt b{font-size:26px;font-weight:700;color:var(--go);font-family:"SF Mono",ui-monospace,monospace}
 .formula .amt span{font-size:11px;color:var(--muted);margin-left:6px}
+.formula .why{margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule2);
+  font-size:11.5px;color:var(--warn);line-height:1.7}
+.formula .why b{display:block;font-size:11px;letter-spacing:.06em;margin-bottom:3px}
+.formula .why button{margin-top:6px;font:inherit;color:var(--go);background:#fff;
+  border:1px solid var(--rule2);border-radius:7px;padding:5px 11px}
 
 /* ═══ フッタ ═══ */
 footer{
@@ -774,8 +779,34 @@ function sayCard(p,ph,extra){
       <input type="number" step="0.5" min="0" max="15" inputmode="decimal" data-f="pause" value="${pauseOf(p)}"></label>
   </div>`;
 }
-const fxHTML=()=>costLines().map(l=>`<div class="ln">${esc(l)}</div>`).join("")
-  +`<div class="amt"><b>${yen(calc().amount)}</b><span>／ ${calc().period.name}</span></div>`;
+// 金額が出ないときの理由。入力そのものではなく「足りないもの」を並べる
+function costWarn(){
+  const c=P.cost, w=[];
+  const useM=c.target!=="man", useH=c.target!=="machine";
+  const rateM=Number(S.chargeMachine)||0, rateH=Number(S.chargeMan)||0;
+  const filled=x=>x!==""&&x!=null;
+  if(!num(c.qty))  w.push("「数量（個）」が空欄です。");
+  if(!num(c.base)) w.push("「下の時間は何個あたりか」が空欄です。1個あたりとして計算しています。");
+  if(useM&&!(num(c.mBefore)-num(c.mAfter)>0))
+    w.push(filled(c.mBefore)||filled(c.mAfter)
+      ? "機械の時間が「改善前 ≦ 改善後」です。短縮になっていません。"
+      : "機械の時間が空欄です。");
+  if(useH&&!(num(c.hBefore)-num(c.hAfter)>0))
+    w.push(filled(c.hBefore)||filled(c.hAfter)
+      ? "人の時間が「改善前 ≦ 改善後」です。短縮になっていません。"
+      : "人の時間が空欄です。");
+  if(useM&&!rateM) w.push("設定ページの「機械チャージ（円／時）」が空欄です。");
+  if(useH&&!rateH) w.push("設定ページの「マンチャージ（円／時）」が空欄です。");
+  return w;
+}
+const fxHTML=()=>{
+  const k=calc(), w=costWarn();
+  return costLines().map(l=>`<div class="ln">${esc(l)}</div>`).join("")
+    +`<div class="amt"><b>${yen(k.amount)}</b><span>／ ${k.period.name}</span></div>`
+    +(w.length?`<div class="why"><b>金額が出ない理由</b>${
+        w.map(t=>`<div>・${esc(t)}</div>`).join("")}${
+        /設定ページ/.test(w.join(""))?`<button id="fx-set">設定を開く</button>`:""}</div>`:"");
+};
 
 function bind(p){
   const R=$("#slide");
@@ -825,6 +856,9 @@ function bind(p){
     audio.delete(old);audio.delete(keyOf(p));save();
     const fx=R.querySelector("#fx"); if(fx) fx.innerHTML=fxHTML();
     live();drawGauge();});
+  // 「設定を開く」は中身を作り直しても効くように、枠側で受ける
+  const fxBox=R.querySelector("#fx");
+  if(fxBox) fxBox.onclick=ev=>{ if(ev.target.id==="fx-set") openSettings(); };
 
   const zone=R.querySelector(".tapzone");
   if(zone){
@@ -1540,6 +1574,9 @@ function openSettings(){
     </div>
     <label class="f" style="margin-top:9px"><span>年間稼働月数</span>
       <input type="number" min="1" max="12" inputmode="numeric" data-s="months" value="${S.months}"></label>
+    <p class="hint" style="color:var(--warn)">${
+      (Number(S.chargeMachine)||0)&&(Number(S.chargeMan)||0)?""
+      :"※ここが空欄のあいだは、効果ページの金額は必ず ¥0 になります。"}</p>
   </div>
 
   <div class="card"><h3>字幕</h3>
