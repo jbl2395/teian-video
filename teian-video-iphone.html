@@ -788,7 +788,14 @@ function bind(p){
       ?(e.value===""?null:Number(e.value)):e.value;
     if(k==="say"&&p.kind==="title") p.sayLocked=true;   // 手で直した文はそのまま残す
     audio.delete(old);audio.delete(keyOf(p));save();
-    if(k==="labelText"){paint();return;}
+    if(k==="labelText"){
+      // 入力欄を作り直すとキーボードが閉じるので、表示だけを差し替える
+      const h=R.querySelector(".head h1");
+      if(h) h.textContent=(headText(p)&&dispLabel(p)!=="（見出しなし）")?headText(p):`ページ ${contentNo(p)}`;
+      const pl=$("#pager").querySelector(`[data-i="${cur}"] .l`);
+      if(pl) pl.textContent=dispLabel(p)||"ページ";
+      live();drawGauge();return;
+    }
     live();drawGauge();});
   const sa=R.querySelector("#sayauto");
   if(sa) sa.onclick=()=>{p.sayLocked=false;audio.delete(keyOf(p));save();paint();};
