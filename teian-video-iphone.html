@@ -386,6 +386,9 @@ function migrate(){
   if(c.qty===0) c.qty="";                     // 0 は空欄あつかいに
   P.cost=c;
   for(const p of P.pages) if(p.kind==="content"&&!p.layout) p.layout="photo";
+  // 以前に手で入れてある部署・代表者は、設定の値で上書きしない
+  if(P.meta.deptLocked==null)      P.meta.deptLocked      = !!(P.meta.dept||"").trim()      && P.meta.dept!==S.deptName;
+  if(P.meta.presenterLocked==null) P.meta.presenterLocked = !!(P.meta.presenter||"").trim() && P.meta.presenter!==S.presenterName;
 }
 
 /* ══════════ 3. 素材 ══════════ */
@@ -525,8 +528,9 @@ function titleSay(){
 // 設定の代表者・部署をタイトルへ流し込み、あいさつを作り直す（手で直した文は残す）
 function syncTitle(){
   const t=P.pages.find(p=>p.kind==="title"); if(!t) return;
-  if(!(P.meta.dept||"").trim()      && S.deptName)      P.meta.dept=S.deptName;
-  if(!(P.meta.presenter||"").trim() && S.presenterName) P.meta.presenter=S.presenterName;
+  // 手で入れていなければ、設定の値をそのまま反映し続ける（入力中の1文字で止めない）
+  if(!P.meta.deptLocked      && S.deptName)      P.meta.dept=S.deptName;
+  if(!P.meta.presenterLocked && S.presenterName) P.meta.presenter=S.presenterName;
   if(!t.sayLocked){
     const a=titleSay();
     if(t.say!==a){ audio.delete(keyOf(t)); t.say=a; }
@@ -765,7 +769,18 @@ const fxHTML=()=>costLines().map(l=>`<div class="ln">${esc(l)}</div>`).join("")
 function bind(p){
   const R=$("#slide");
   R.querySelectorAll("[data-m]").forEach(e=>e.oninput=()=>{
-    P.meta[e.dataset.m]=e.value;save();live();});
+    const k=e.dataset.m;
+    P.meta[k]=e.value;
+    // タイトル画面で直接書いたら設定からの自動反映を止める（空に戻せばまた自動）
+    if(k==="dept")      P.meta.deptLocked      = e.value.trim()!=="";
+    if(k==="presenter") P.meta.presenterLocked = e.value.trim()!=="";
+    if(k==="dept"||k==="presenter"||k==="members"){
+      syncTitle();
+      const sa=R.querySelector('[data-f="say"]');
+      if(sa&&!p.sayLocked) sa.value=p.say||"";
+      drawGauge();
+    }
+    save();live();});
   R.querySelectorAll("[data-f]").forEach(e=>e.oninput=()=>{
     const k=e.dataset.f;
     const old=keyOf(p);
