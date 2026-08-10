@@ -40,16 +40,16 @@ header button{
 header button:active{background:#2a333a}
 
 /* ═══ 尺バー ═══ */
-.gauge{flex:0 0 auto;background:#dfe2dd;padding:7px 14px 8px;border-bottom:1px solid var(--rule)}
+.gauge{flex:0 0 auto;background:#e4efe5;padding:7px 14px 8px;border-bottom:1px solid #cadfcd}
 .gline{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px}
 .gline b{font-weight:600;color:var(--ink);font-size:13px}
 .gline .over{color:var(--warn)}
-.gbar{position:relative;height:14px;background:#f4f5f2;border:1px solid var(--rule);border-radius:7px;overflow:hidden;display:flex}
-.gbar .sg{min-width:2px;border-right:1px solid rgba(255,255,255,.7)}
-.gbar .sg[data-k=photo]{background:#4f8f74}
-.gbar .sg[data-k=movie]{background:#2c6f8f}
-.gbar .sg[data-k=slide]{background:#97a09b}
-.gbar .sg[data-k=mute]{background:#c9cec8}
+.gbar{position:relative;height:14px;background:#f6faf6;border:1px solid #cadfcd;border-radius:7px;overflow:hidden;display:flex}
+.gbar .sg{min-width:2px;border-right:1px solid rgba(255,255,255,.85)}
+.gbar .sg[data-k=photo]{background:#9ad9ab}
+.gbar .sg[data-k=movie]{background:#74c795}
+.gbar .sg[data-k=slide]{background:#c2e7c9}
+.gbar .sg[data-k=mute]{background:#e0eee1}
 .gbar .rest{flex:1}
 .gbar .lim{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--warn);opacity:.85}
 
@@ -255,8 +255,13 @@ const KINDS={
   cost:{n:"効果（金額）",fixed:true},
   closing:{n:"結び",fixed:true},
 };
-const LABELS=["改善前","問題点","改善点","改善後","効果","（見出しなし）"];
+const FREE="自由記載";
+const LABELS=[FREE,"改善前","問題点","改善点","改善後","効果","（見出しなし）"];
 const MODES=[{v:"both",t:"字幕＋読み上げ"},{v:"say",t:"読み上げのみ"},{v:"mute",t:"無音"}];
+// スライドの型（「この画面の扱い」＝MODES とは別の軸）
+const LAYOUTS=[{v:"text",t:"テキストのみ"},{v:"photo",t:"写真＋下部テキスト"},{v:"photoonly",t:"写真のみ"}];
+const layoutOf=p=>p.layout||"photo";
+const hasPhoto=p=>layoutOf(p)!=="text";
 
 const DEFAULTS={
   ttsKey:"", ttsVoice:"ja-JP-Chirp3-HD-Aoede", ttsRate:1.0, ttsPitch:0,
@@ -266,6 +271,19 @@ const DEFAULTS={
   theme:"light", silentSec:2.5, pad:0.3,
   chargeMachine:4800, chargeMan:3200, months:12,
   closingText:"ご清聴ありがとうございました", orgName:"",
+  presenterName:"", deptName:"",
+  readFixes:[
+    {f:"様に",t:"ように",on:true},
+    {f:"様な",t:"ような",on:true},
+    {f:"様々",t:"さまざま",on:true},
+    {f:"行った",t:"おこなった",on:true},
+    {f:"一日",t:"いちにち",on:true},
+    {f:"一人",t:"ひとり",on:true},
+    {f:"二人",t:"ふたり",on:true},
+    {f:"治具",t:"じぐ",on:true},
+    {f:"芯出し",t:"しんだし",on:true},
+    {f:"工数",t:"こうすう",on:true},
+  ],
 };
 const THEMES={
   light:{bg:"#fbfbf8",fg:"#15191d",sub:"#5b646b",line:"#d5d8d1"},
@@ -302,10 +320,16 @@ let cur=0;
 const media=new Map();   // id -> {blob,url,el,kind,dur}
 const audio=new Map();   // pageId -> {buf,dur}
 
+// 効果の初期値。数値は空欄（0を入れない）
+function blankCost(){
+  return {qty:"",qtyUnit:"month",base:"",
+    mBefore:"",mAfter:"",hBefore:"",hAfter:"",target:"both"};
+}
+const num=v=>{const n=Number(v);return isFinite(n)?n:0;};
 function blank(){
   return {
     meta:{title:"",dept:"",presenter:"",members:""},
-    cost:{qty:0,qtyUnit:"month",basis:"per",before:0,after:0,target:"both"},
+    cost:blankCost(),
     pages:[
       {id:uid(),kind:"title"},
       {id:uid(),kind:"toc",show:"",say:"",mode:"say"},
@@ -315,8 +339,9 @@ function blank(){
     ],
   };
 }
-function newContent(label){
-  return {id:uid(),kind:"content",label:label||"改善前",mediaId:null,
+function newContent(label,from){
+  return {id:uid(),kind:"content",label:label||"改善前",
+    labelText:from?.labelText||"",layout:from?.layout||"photo",mediaId:null,
     show:"",say:"",mode:"both",trimStart:0,trimEnd:0,pause:null};
 }
 // 読み上げの後ろに入れる空白時間（秒）
@@ -345,6 +370,22 @@ const save=()=>{clearTimeout(sv);sv=setTimeout(()=>{
 function load(){
   try{const s=JSON.parse(localStorage.getItem("ti.s"));if(s)S={...DEFAULTS,...s};}catch{}
   try{const p=JSON.parse(localStorage.getItem("ti.p"));if(p?.pages?.length)P=p;}catch{}
+  migrate();
+}
+function migrate(){
+  if(!Array.isArray(S.readFixes)) S.readFixes=DEFAULTS.readFixes.map(r=>({...r}));
+  const c={...blankCost(),...(P.cost||{})};
+  if("before" in c || "basis" in c){          // 旧：機械／人が一体だった頃の値を引き継ぐ
+    if(c.mBefore===""&&c.hBefore===""){
+      if(c.target==="man"){ c.hBefore=c.before??""; c.hAfter=c.after??""; }
+      else { c.mBefore=c.before??""; c.mAfter=c.after??""; }
+    }
+    if(c.base===""&&c.basis==="per") c.base=1;
+    delete c.before; delete c.after; delete c.basis;
+  }
+  if(c.qty===0) c.qty="";                     // 0 は空欄あつかいに
+  P.cost=c;
+  for(const p of P.pages) if(p.kind==="content"&&!p.layout) p.layout="photo";
 }
 
 /* ══════════ 3. 素材 ══════════ */
@@ -360,7 +401,7 @@ async function attachFile(pg,f,insertAfter){
   await putB(id,f);
   await link(id,f,isV?"video":"image");
   if(insertAfter){
-    const np=newContent(pg.label);
+    const np=newContent(pg.label,pg);
     np.mediaId=id;
     const m=media.get(id); if(m&&m.kind==="video") np.trimEnd=Math.min(15,m.dur);
     P.pages.splice(P.pages.indexOf(insertAfter)+1,0,np);
@@ -393,30 +434,55 @@ async function restore(){
 }
 
 /* ══════════ 4. 原価 ══════════ */
-function calc(){
-  const c=P.cost,mo=Number(S.months)||12,q=Number(c.qty)||0;
-  const annual=c.qtyUnit==="month"?q*mo:q;
-  const diff=(Number(c.before)||0)-(Number(c.after)||0);
-  const min=c.basis==="per"?diff*annual:diff*(c.qtyUnit==="month"?mo:1);
-  const h=min/60;
-  const rate=(c.target!=="man"?Number(S.chargeMachine)||0:0)+(c.target!=="machine"?Number(S.chargeMan)||0:0);
-  return {annual,diff,savedH:h,rate,amount:h*rate,months:mo,
-    basis:c.basis,qtyUnit:c.qtyUnit,target:c.target,
-    before:Number(c.before)||0,after:Number(c.after)||0};
-}
 const TGT={machine:"機械",man:"人",both:"機械＋人"};
+const UNITS=[{v:"unit",t:"この個数ぶん"},{v:"month",t:"1ヶ月あたり"},{v:"year",t:"1年あたり"}];
+// 期間の呼び名。月間×稼働6ヶ月のときだけ「半年」
+function periodOf(){
+  const c=P.cost, mo=Number(S.months)||12;
+  if(c.qtyUnit==="month") return {mul:mo,name:mo===6?"半年":"年間",unitName:mo===6?"半年で":"年間",months:mo};
+  if(c.qtyUnit==="year")  return {mul:1,name:"年間",unitName:"年間",months:12};
+  return {mul:1,name:"合計",unitName:"合計",months:0};   // 個数ぶん＝単発
+}
+function calc(){
+  const c=P.cost, q=num(c.qty), base=num(c.base)||1, pr=periodOf();
+  const scale=q/base*pr.mul;                       // 基準個数あたりの時間を数量・期間に按分
+  const mDiff=num(c.mBefore)-num(c.mAfter);        // 機械の短縮（分／基準個数）
+  const hDiff=num(c.hBefore)-num(c.hAfter);        // 人の短縮（分／基準個数）
+  const useM=c.target!=="man", useH=c.target!=="machine";
+  const mMin=useM?mDiff*scale:0, hMin=useH?hDiff*scale:0;
+  const mH=mMin/60, hH=hMin/60;
+  const rateM=Number(S.chargeMachine)||0, rateH=Number(S.chargeMan)||0;
+  const mAmt=mH*rateM, hAmt=hH*rateH;
+  return {q,base,scale,mDiff,hDiff,useM,useH,mMin,hMin,mH,hH,rateM,rateH,
+    mAmt,hAmt,amount:mAmt+hAmt,savedH:mH+hH,period:pr,target:c.target,qtyUnit:c.qtyUnit};
+}
+const n1=n=>(Math.round(n*10)/10).toLocaleString("ja-JP");
+// 「10個当たり」の按分と期間を1行で表す
+function scaleLine(k){
+  const q=k.q.toLocaleString("ja-JP"), b=k.base.toLocaleString("ja-JP");
+  const per=k.qtyUnit==="month"?`${q}個/月`:k.qtyUnit==="year"?`${q}個/年`:`${q}個`;
+  return k.period.mul>1?`数量 ${per} ÷ ${b}個あたり × ${k.period.months}ヶ月`
+                       :`数量 ${per} ÷ ${b}個あたり`;
+}
 function costLines(){
-  const k=calc(),u=k.basis==="per"?"分/個":"分";
-  return [`改善前 ${k.before}${u} − 改善後 ${k.after}${u} = ${k.diff.toFixed(1)}${u} 短縮`,
-    k.basis==="per"?`${k.diff.toFixed(1)}分 × 年間 ${k.annual.toLocaleString()}個 = 年間 ${k.savedH.toFixed(1)}時間`
-                   :`${k.diff.toFixed(1)}分 × 年${k.qtyUnit==="month"?k.months:1}回 = 年間 ${k.savedH.toFixed(1)}時間`,
-    `${k.savedH.toFixed(1)}時間 × ${yen(k.rate)}／時（${TGT[k.target]}）`];
+  const k=calc(),L=[],P_=k.period;
+  L.push(scaleLine(k));
+  if(k.useM&&k.mDiff) L.push(`機械 ${n1(num(P.cost.mBefore))}分 − ${n1(num(P.cost.mAfter))}分 → ${P_.name} ${n1(k.mH)}時間 × ${yen(k.rateM)}／時 ＝ ${yen(k.mAmt)}`);
+  if(k.useH&&k.hDiff) L.push(`人　 ${n1(num(P.cost.hBefore))}分 − ${n1(num(P.cost.hAfter))}分 → ${P_.name} ${n1(k.hH)}時間 × ${yen(k.rateH)}／時 ＝ ${yen(k.hAmt)}`);
+  if(k.useM&&k.useH&&k.mDiff&&k.hDiff) L.push(`機械＋人 合算 ＝ ${P_.name} ${n1(k.savedH)}時間`);
+  if(L.length===1) L.push("削減時間を入力してください");
+  return L;
 }
 function costSay(){
-  const k=calc(); if(!k.diff) return "";
-  return `原価低減の効果です。改善前 ${k.before} 分に対し、改善後は ${k.after} 分となり、`
-    +`年間で およそ ${k.savedH.toFixed(0)} 時間の短縮となります。`
-    +`${TGT[k.target]}のチャージで換算すると、年間 ${Math.round(k.amount).toLocaleString()} 円の低減効果です。`;
+  const k=calc(); if(!k.savedH) return "";
+  const p=k.period.name;
+  let s="原価低減の効果です。";
+  if(k.useM&&k.mDiff) s+=`機械は ${n1(num(P.cost.mBefore))}分 から ${n1(num(P.cost.mAfter))}分 に、`;
+  if(k.useH&&k.hDiff) s+=`人の作業は ${n1(num(P.cost.hBefore))}分 から ${n1(num(P.cost.hAfter))}分 に短縮しました。`;
+  else if(k.useM&&k.mDiff) s+="短縮しました。";
+  s+=`${p}で およそ ${Math.round(k.savedH)} 時間の削減となり、`;
+  s+=`チャージで換算すると ${p} ${Math.round(k.amount).toLocaleString()} 円の低減効果です。`;
+  return s;
 }
 
 /* ══════════ 5. タイムライン ══════════ */
@@ -428,13 +494,47 @@ function speechOf(p){
   if(p.mode==="mute")    return "";
   return (p.say||"").trim()||(p.show||"").trim();
 }
-const subOf=p=>(p.kind==="content"&&p.mode==="both")?(p.show||"").trim():"";
+// 字幕は「写真＋下部テキスト」のときだけ。テキストのみは中央に本文として描く
+const subOf=p=>(p.kind==="content"&&p.mode==="both"&&layoutOf(p)==="photo")?(p.show||"").trim():"";
+// 見出しの実際の文言（自由記載はユーザーの入力文）
+function dispLabel(p){
+  if(p.kind!=="content") return "";
+  return p.label===FREE?(p.labelText||"").trim():p.label;
+}
+// 目次に並ぶ見出し（重複は1つに、空と「（見出しなし）」は除く）
+function tocItems(){
+  return [...new Set(P.pages.filter(p=>p.kind==="content")
+    .map(dispLabel).filter(l=>l&&l!=="（見出しなし）"))];
+}
 function tocSpeech(){
-  const ls=[...new Set(P.pages.filter(p=>p.kind==="content"&&p.label!=="（見出しなし）").map(p=>p.label))];
+  const ls=tocItems();
   return ls.length?`本日は、${ls.join("、")}の順にご説明します。`:"";
 }
+/* ② 代表者・部署から冒頭あいさつを自動で作る */
+function titleSay(){
+  const dept=(P.meta.dept||"").trim(), who=(P.meta.presenter||"").trim();
+  if(!dept&&!who) return "";
+  const head=dept&&who?`${dept}の${who}です、よろしくお願いします。`
+            :who?`${who}です、よろしくお願いします。`
+            :`${dept}です、よろしくお願いします。`;
+  const list=(P.meta.members||"").split(/[、,，\s]+/).map(s=>s.trim()).filter(Boolean);
+  if(!list.length) return head;                      // メンバー未記入ならここまで
+  const all=[...new Set([who,...list].filter(Boolean))];   // 代表者＋メンバーを列挙
+  return head+`メンバーは、${all.join("、")}が担当しました。`;
+}
+// 設定の代表者・部署をタイトルへ流し込み、あいさつを作り直す（手で直した文は残す）
+function syncTitle(){
+  const t=P.pages.find(p=>p.kind==="title"); if(!t) return;
+  if(!(P.meta.dept||"").trim()      && S.deptName)      P.meta.dept=S.deptName;
+  if(!(P.meta.presenter||"").trim() && S.presenterName) P.meta.presenter=S.presenterName;
+  if(!t.sayLocked){
+    const a=titleSay();
+    if(t.say!==a){ audio.delete(keyOf(t)); t.say=a; }
+  }
+}
 const estimate=t=>t?Math.max(1.2,t.replace(/\s/g,"").length*0.16/(Number(S.ttsRate)||1)+0.5):Number(S.silentSec);
-const keyOf=p=>p.id+"#"+hash(speechOf(p)+"|"+S.ttsVoice+"|"+S.ttsRate);
+const fixSig=()=>(S.readFixes||[]).filter(r=>r.on).map(r=>r.f+">"+r.t).join(",");
+const keyOf=p=>p.id+"#"+hash(speechOf(p)+"|"+S.ttsVoice+"|"+S.ttsRate+"|"+fixSig());
 const hash=s=>{let h=0;for(let i=0;i<(s||"").length;i++)h=(h*31+s.charCodeAt(i))|0;return(h>>>0).toString(36)};
 
 function timeline(){
@@ -486,7 +586,7 @@ function drawPager(){
   const el=$("#pager");
   el.innerHTML=P.pages.map((p,i)=>{
     const st=i===cur?"cur":done(p)?"done":"";
-    const n=p.kind==="content"?(p.label==="（見出しなし）"?"ページ":p.label):KINDS[p.kind].n;
+    const n=p.kind==="content"?(dispLabel(p)&&dispLabel(p)!=="（見出しなし）"?dispLabel(p):"ページ"):KINDS[p.kind].n;
     const num=p.kind==="content"?contentNo(p):{title:"表",toc:"目",cost:"効",closing:"結"}[p.kind];
     return `<button class="pg" data-i="${i}" data-s="${st}">
       <span class="d">${st==="done"?"済":num}</span><span class="l">${esc(n)}</span></button>`;
@@ -497,26 +597,28 @@ function drawPager(){
   if(c) c.scrollIntoView({inline:"center",block:"nearest",behavior:"smooth"});
 }
 function labelNo(p){
-  const same=P.pages.filter(x=>x.kind==="content"&&x.label===p.label);
+  const me=dispLabel(p);
+  if(!me) return 0;
+  const same=P.pages.filter(x=>x.kind==="content"&&dispLabel(x)===me);
   return same.length>1?same.indexOf(p)+1:0;
 }
 function headText(p){
-  const n=labelNo(p);
-  return p.label+(n?" "+n:"");
+  const n=labelNo(p), l=dispLabel(p);
+  return l?l+(n?" "+n:""):"";
 }
 const contentNo=p=>{const n=labelNo(p);
   return n?String(n):String(P.pages.filter(x=>x.kind==="content").indexOf(p)+1);};
 function done(p){
   if(p.kind==="title")   return !!P.meta.title;
-  if(p.kind==="content") return !!p.mediaId;
-  if(p.kind==="cost")    return calc().diff!==0;
+  if(p.kind==="content") return layoutOf(p)==="text"?!!(p.show||"").trim():!!p.mediaId;
+  if(p.kind==="cost")    return calc().savedH!==0;
   return true;
 }
 function addPage(){
   const last=P.pages.map(p=>p.kind).lastIndexOf("content");
   const at=last>=0?last+1:firstFixed("cost");
   const prev=last>=0?P.pages[last]:null;
-  const np=newContent(prev?prev.label:"改善前");
+  const np=newContent(prev?prev.label:"改善前",prev);
   P.pages.splice(at,0,np);
   cur=at; save(); paint();
   setTimeout(()=>pick(np,false),150);
@@ -531,15 +633,16 @@ function go(i){
 
 /* ══════════ 7. 画面 ══════════ */
 function paint(){
+  syncTitle();
   drawPager(); drawGauge();
   const p=page();
   const n=p.kind==="content"
-    ?(p.label==="（見出しなし）"?`ページ ${contentNo(p)}`:headText(p)||p.label)
+    ?(headText(p)&&dispLabel(p)!=="（見出しなし）"?headText(p):`ページ ${contentNo(p)}`)
     :KINDS[p.kind].n;
   $("#slide").innerHTML=`
     <div class="head"><h1>${esc(n)}</h1>
       <span class="sub">${cur+1} / ${P.pages.length}</span></div>
-    ${p.kind==="content"?zoneHTML(p):`<canvas class="paper" id="pv" width="1280" height="720"></canvas>`}
+    ${p.kind==="content"&&hasPhoto(p)?zoneHTML(p):`<canvas class="paper" id="pv" width="1280" height="720"></canvas>`}
     ${bodyHTML(p)}`;
   bind(p);
   const c=$("#pv"); if(c) renderTo(c,p,0);
@@ -565,13 +668,15 @@ function bodyHTML(p){
       <label class="f"><span>提案タイトル</span>
         <input data-m="title" value="${esc(P.meta.title)}" placeholder="治具改良による取付時間の短縮"></label>
       <div class="g2">
-        <label class="f"><span>部署・課</span><input data-m="dept" value="${esc(P.meta.dept)}" placeholder="製造二課"></label>
-        <label class="f"><span>代表提案者</span><input data-m="presenter" value="${esc(P.meta.presenter)}" placeholder="山田 太郎"></label>
+        <label class="f"><span>部署・課<em>設定から自動</em></span><input data-m="dept" value="${esc(P.meta.dept)}" placeholder="工作グループ"></label>
+        <label class="f"><span>代表提案者<em>設定から自動</em></span><input data-m="presenter" value="${esc(P.meta.presenter)}" placeholder="山田"></label>
       </div>
-      <label class="f" style="margin-top:10px"><span>メンバー<em>読点で区切る</em></span>
-        <input data-m="members" value="${esc(P.meta.members)}" placeholder="鈴木、佐藤、高橋"></label>
+      <label class="f" style="margin-top:10px"><span>メンバー<em>読点で区切る／空欄ならあいさつだけ</em></span>
+        <input data-m="members" value="${esc(P.meta.members)}" placeholder="山田、鈴木"></label>
     </div>
-    ${sayCard(p,"冒頭のあいさつ（空欄なら無音）")}`;
+    ${sayCard(p,"冒頭のあいさつ（空欄なら無音）",
+      p.sayLocked?`<div class="rowbtns"><button class="sm" id="sayauto">自動生成に戻す</button></div>`
+                 :`<p class="hint" style="margin-top:6px">部署・代表提案者・メンバーから自動で作っています。書き直すとそのまま残ります。</p>`)}`;
 
   if(p.kind==="toc") return `
     <div class="card"><h3>この動画の構成</h3>
@@ -579,28 +684,34 @@ function bodyHTML(p){
     ${sayCard(p,"空欄なら見出しから自動で作ります")}`;
 
   if(p.kind==="cost"){
-    const c=P.cost,k=calc();
-    return `<div class="card"><h3>数量と時間</h3>
+    const c=P.cost, v=x=>(x===""||x==null)?"":x;
+    const N=(lab,key,ph)=>`<label class="f"><span>${lab}</span>
+      <input type="number" inputmode="decimal" data-c="${key}" value="${v(c[key])}" placeholder="${ph||""}"></label>`;
+    return `<div class="card"><h3>数量</h3>
       <div class="g2">
-        <label class="f"><span>個数</span><input type="number" inputmode="decimal" data-c="qty" value="${c.qty}"></label>
-        <label class="f"><span>その個数は</span><select data-c="qtyUnit">
-          <option value="month"${c.qtyUnit==="month"?" selected":""}>1ヶ月あたり</option>
-          <option value="year"${c.qtyUnit==="year"?" selected":""}>1年あたり</option></select></label>
+        ${N("数量（個）","qty","100")}
+        <label class="f"><span>その数量は</span><select data-c="qtyUnit">
+          ${UNITS.map(u=>`<option value="${u.v}"${c.qtyUnit===u.v?" selected":""}>${u.t}</option>`).join("")}</select></label>
       </div>
-      <div class="g2" style="margin-top:9px">
-        <label class="f"><span>改善前（分）</span><input type="number" inputmode="decimal" data-c="before" value="${c.before}"></label>
-        <label class="f"><span>改善後（分）</span><input type="number" inputmode="decimal" data-c="after" value="${c.after}"></label>
-      </div>
-      <div class="g2" style="margin-top:9px">
-        <label class="f"><span>時間の入れ方</span><select data-c="basis">
-          <option value="per"${c.basis==="per"?" selected":""}>1個あたり</option>
-          <option value="total"${c.basis==="total"?" selected":""}>全部まとめて</option></select></label>
-        <label class="f"><span>チャージ対象</span><select data-c="target">
-          <option value="machine"${c.target==="machine"?" selected":""}>機械のみ</option>
-          <option value="man"${c.target==="man"?" selected":""}>人のみ</option>
-          <option value="both"${c.target==="both"?" selected":""}>機械＋人</option></select></label>
-      </div>
+      <label class="f" style="margin-top:9px"><span>下の時間は何個あたりか<em>例）10個あたり</em></span>
+        <input type="number" inputmode="decimal" data-c="base" value="${v(c.base)}" placeholder="10"></label>
+    </div>
+
+    <div class="card"><h3>機械の時間<em></em></h3>
+      <div class="g2">${N("改善前（分）","mBefore","12")}${N("改善後（分）","mAfter","8")}</div>
+    </div>
+
+    <div class="card"><h3>人の時間</h3>
+      <div class="g2">${N("改善前（分）","hBefore","15")}${N("改善後（分）","hAfter","5")}</div>
+    </div>
+
+    <div class="card"><h3>集計</h3>
+      <label class="f"><span>チャージ対象<em>両方なら合算します</em></span><select data-c="target">
+        <option value="machine"${c.target==="machine"?" selected":""}>機械のみ</option>
+        <option value="man"${c.target==="man"?" selected":""}>人のみ</option>
+        <option value="both"${c.target==="both"?" selected":""}>機械＋人</option></select></label>
       <div class="formula" id="fx">${fxHTML()}</div>
+      <p class="hint">チャージ単価と年間稼働月数は設定ページの値をそのまま使います。設定を変えるとここも作り直されます。</p>
     </div>
     ${sayCard(p,"空欄なら計算結果から自動で作ります")}`;
   }
@@ -613,9 +724,14 @@ function bodyHTML(p){
   /* content */
   const m=p.mediaId?media.get(p.mediaId):null;
   return `<div class="card">
-      <label class="f"><span>見出し<em>動画の左上に出ます</em></span>
+      <label class="f"><span>見出し<em>動画の左上と目次に出ます</em></span>
         <select data-lab="1">${LABELS.map(l=>`<option${p.label===l?" selected":""}>${l}</option>`).join("")}</select></label>
-      <label class="f show"><span>資料に出す文字<em>この文がそのまま画面に出ます</em></span>
+      ${p.label===FREE?`<label class="f"><span>見出しの文字<em>目次と読み上げにも使われます</em></span>
+        <input data-f="labelText" value="${esc(p.labelText||"")}" placeholder="例）新しい治具の構造"></label>`:""}
+      <label class="f"><span>スライドの型</span>
+        <div class="chips">${LAYOUTS.map(x=>
+          `<button class="chip" data-lay="${x.v}" aria-pressed="${layoutOf(p)===x.v}">${x.t}</button>`).join("")}</div></label>
+      <label class="f show"><span>${layoutOf(p)==="text"?"画面中央に出す文字":"資料に出す文字"}<em>${layoutOf(p)==="photoonly"?"画面には出ません（読み上げにだけ使われます）":"この文がそのまま画面に出ます"}</em></span>
         <textarea data-f="show" placeholder="例）芯出しに毎回15分かかっていた">${esc(p.show||"")}</textarea></label>
       <label class="f say"><span>読み上げ文<em>空欄なら上の文をそのまま読みます</em></span>
         <textarea data-f="say" placeholder="読み方を変えたいときだけ入力">${esc(p.say||"")}</textarea></label>
@@ -635,15 +751,16 @@ function bodyHTML(p){
       </div>
     </div>`;
 }
-function sayCard(p,ph){
+function sayCard(p,ph,extra){
   return `<div class="card"><label class="f say"><span>読み上げ文</span>
       <textarea data-f="say" placeholder="${esc(ph)}">${esc(p.say||"")}</textarea></label>
-    <label class="f"><span>読み上げの後の間<em>秒</em></span>
+    ${extra||""}
+    <label class="f" style="margin-top:10px"><span>読み上げの後の間<em>秒</em></span>
       <input type="number" step="0.5" min="0" max="15" inputmode="decimal" data-f="pause" value="${pauseOf(p)}"></label>
   </div>`;
 }
 const fxHTML=()=>costLines().map(l=>`<div class="ln">${esc(l)}</div>`).join("")
-  +`<div class="amt"><b>${yen(calc().amount)}</b><span>／ 年間</span></div>`;
+  +`<div class="amt"><b>${yen(calc().amount)}</b><span>／ ${calc().period.name}</span></div>`;
 
 function bind(p){
   const R=$("#slide");
@@ -651,9 +768,17 @@ function bind(p){
     P.meta[e.dataset.m]=e.value;save();live();});
   R.querySelectorAll("[data-f]").forEach(e=>e.oninput=()=>{
     const k=e.dataset.f;
+    const old=keyOf(p);
     p[k]=(k==="trimStart"||k==="trimEnd"||k==="pause")
       ?(e.value===""?null:Number(e.value)):e.value;
-    audio.delete(keyOf(p));save();live();drawGauge();});
+    if(k==="say"&&p.kind==="title") p.sayLocked=true;   // 手で直した文はそのまま残す
+    audio.delete(old);audio.delete(keyOf(p));save();
+    if(k==="labelText"){paint();return;}
+    live();drawGauge();});
+  const sa=R.querySelector("#sayauto");
+  if(sa) sa.onclick=()=>{p.sayLocked=false;audio.delete(keyOf(p));save();paint();};
+  R.querySelectorAll("[data-lay]").forEach(b=>b.onclick=()=>{
+    p.layout=b.dataset.lay;audio.delete(keyOf(p));save();paint();});
   R.querySelectorAll("[data-ct]").forEach(e=>e.oninput=()=>{S.closingText=e.value;save();live();});
   const lab=R.querySelector("[data-lab]");
   if(lab) lab.onchange=()=>{p.label=lab.value;save();paint();};
@@ -661,8 +786,10 @@ function bind(p){
     p.mode=b.dataset.mode;audio.delete(keyOf(p));save();paint();});
   R.querySelectorAll("[data-c]").forEach(e=>e.oninput=()=>{
     const k=e.dataset.c;
-    P.cost[k]=["qtyUnit","basis","target"].includes(k)?e.value:Number(e.value);
-    audio.delete(keyOf(p));save();
+    const old=keyOf(p);
+    P.cost[k]=["qtyUnit","target"].includes(k)?e.value
+             :(e.value===""?"":Number(e.value));      // 空欄は空欄のまま保つ
+    audio.delete(old);audio.delete(keyOf(p));save();
     const fx=R.querySelector("#fx"); if(fx) fx.innerHTML=fxHTML();
     live();drawGauge();});
 
@@ -688,7 +815,7 @@ function bind(p){
     const i=P.pages.indexOf(p);
     const others=P.pages.filter(x=>x.kind==="content"&&x!==p);
     if(!others.length){                    // 最後の1枚は消さずに空にする
-      const fresh=newContent(p.label);
+      const fresh=newContent(p.label,p);
       P.pages.splice(i,1,fresh); cur=i;
     }else{
       P.pages.splice(i,1); cur=Math.min(P.pages.length-1,Math.max(0,i-1));
@@ -718,6 +845,7 @@ function renderTo(cv,p,t){
   const g=cv.getContext("2d",{alpha:false});
   draw(g,cv.width,cv.height,cv.width/1280,p,t);
 }
+const CIRC=i=>"①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"[i]||(i+1)+".";
 function wrap(g,t,mx){const o=[];let l="";
   for(const ch of t){if(ch==="\n"){o.push(l);l="";continue;}
     if(g.measureText(l+ch).width>mx&&l){o.push(l);l=ch;}else l+=ch;}
@@ -767,13 +895,14 @@ function draw(g,W,H,s,p,t){
     g.fillStyle=T.fg;g.font=`700 ${64*s}px "Hiragino Sans",sans-serif`;g.fillText("目次",W/2,H*0.22);
     g.strokeStyle=T.ac;g.lineWidth=4*s;
     g.beginPath();g.moveTo(W/2-72*s,H*0.27);g.lineTo(W/2+72*s,H*0.27);g.stroke();
-    const ls=[...new Set(P.pages.filter(x=>x.kind==="content"&&x.label!=="（見出しなし）").map(x=>x.label))];
+    const ls=tocItems();
     const n=Math.max(1,ls.length), gap=Math.min(96,420/n)*s, top=H*0.44;
+    const fs=n>6?40:46;
     ls.forEach((l,i)=>{
       const y=top+i*gap;
       g.textAlign="left";
-      g.fillStyle=T.ac;g.font=`700 ${40*s}px "Hiragino Sans",sans-serif`;g.fillText("①②③④⑤⑥⑦⑧"[i]||"・",W*0.30,y);
-      g.fillStyle=T.fg;g.font=`600 ${46*s}px "Hiragino Sans",sans-serif`;g.fillText(l,W*0.30+62*s,y);
+      g.fillStyle=T.ac;g.font=`700 ${(fs-6)*s}px "Hiragino Sans",sans-serif`;g.fillText(CIRC(i),W*0.30,y);
+      g.fillStyle=T.fg;g.font=`600 ${fs*s}px "Hiragino Sans",sans-serif`;g.fillText(l,W*0.30+62*s,y);
       g.strokeStyle=T.line;g.lineWidth=1.5*s;
       g.beginPath();g.moveTo(W*0.30,y+26*s);g.lineTo(W*0.70,y+26*s);g.stroke();});
     return;
@@ -781,16 +910,17 @@ function draw(g,W,H,s,p,t){
   if(p.kind==="cost"){
     head(g,T,"効果（原価低減）",W,s);
     g.textAlign="left";
-    costLines().forEach((l,i)=>{g.fillStyle=T.sub;
-      g.font=`400 ${30*s}px "Hiragino Sans",sans-serif`;g.fillText(l,110*s,H*0.32+i*58*s);});
+    const ln=costLines(), fz=ln.length>=4?25:30, lh=ln.length>=4?46:58;
+    ln.forEach((l,i)=>{g.fillStyle=T.sub;
+      g.font=`400 ${fz*s}px "Hiragino Sans",sans-serif`;g.fillText(l,110*s,H*0.28+i*lh*s);});
     g.strokeStyle=T.ac;g.lineWidth=3*s;
-    g.beginPath();g.moveTo(110*s,H*0.60);g.lineTo(W-110*s,H*0.60);g.stroke();
-    const a=yen(calc().amount);
+    g.beginPath();g.moveTo(110*s,H*0.62);g.lineTo(W-110*s,H*0.62);g.stroke();
+    const k=calc(), a=yen(k.amount);
     g.fillStyle=T.ac;g.font=`700 ${88*s}px "Hiragino Sans",sans-serif`;
-    g.fillText(a,110*s,H*0.76);
+    g.fillText(a,110*s,H*0.79);
     const aw=g.measureText(a).width;
     g.fillStyle=T.sub;g.font=`400 ${30*s}px "Hiragino Sans",sans-serif`;
-    g.fillText("／ 年",110*s+aw+20*s,H*0.76);
+    g.fillText("／ "+k.period.name,110*s+aw+20*s,H*0.79);
     return;
   }
   if(p.kind==="closing"){
@@ -803,10 +933,34 @@ function draw(g,W,H,s,p,t){
     return;
   }
   /* content */
-  const hasHead=p.label&&p.label!=="（見出しなし）";
+  const lay=layoutOf(p);
+  const hasHead=!!dispLabel(p)&&dispLabel(p)!=="（見出しなし）";
   if(hasHead) head(g,T,headText(p),W,s);
   const m=p.mediaId?media.get(p.mediaId):null;
   const sub=subOf(p);
+
+  if(lay==="text"){                       // ① テキストのみ：中央にバランスよく改行
+    const txt=(p.show||"").trim();
+    if(!txt){
+      g.textAlign="center";g.fillStyle=T.sub;
+      g.font=`400 ${26*s}px "Hiragino Sans",sans-serif`;
+      g.fillText("画面に出す文字を入力してください",W/2,H*0.55);
+      return;
+    }
+    const topY=hasHead?130*s:60*s, boxH=H-topY-60*s, mx=W*0.80;
+    let size=64, lines;
+    for(;;){
+      g.font=`700 ${size*s}px "Hiragino Sans","BIZ UDPGothic",sans-serif`;
+      lines=wrap(g,txt,mx);
+      if(lines.length*size*1.5<=boxH/s||size<=22) break;
+      size*=0.94;
+    }
+    const lh=size*1.5*s, top=topY+(boxH-lh*lines.length)/2;
+    g.textAlign="center";g.textBaseline="alphabetic";g.fillStyle=T.fg;
+    lines.forEach((l,i)=>g.fillText(l,W/2,top+lh*(i+1)-lh*0.32));
+    return;
+  }
+
   if(m){
     const el=m.el;
     const iw=el.videoWidth||el.naturalWidth, ih=el.videoHeight||el.naturalHeight;
@@ -822,7 +976,7 @@ function draw(g,W,H,s,p,t){
     g.font=`400 ${26*s}px "Hiragino Sans",sans-serif`;
     g.fillText("写真・動画を選んでください",W/2,H*0.55);
   }
-  if(!sub&&(p.show||"").trim()&&p.mode!=="both"){
+  if(lay!=="photoonly"&&!sub&&(p.show||"").trim()&&p.mode!=="both"){
     g.textAlign="right";g.fillStyle=T.sub;g.font=`400 ${20*s}px "Hiragino Sans",sans-serif`;
     g.fillText(p.mode==="mute"?"（無音）":"♪ 読み上げのみ",W-40*s,H-24*s);
   }
@@ -839,9 +993,19 @@ function head(g,T,lb,W,s){
 
 /* ══════════ 9. Google Cloud TTS ══════════ */
 const AC=()=>(window._ac||=new (window.AudioContext||window.webkitAudioContext)());
+/* ① 読み間違いの補正。字幕はそのまま、TTSへ送る文だけを置き換える */
+function readFix(t){
+  let s=t||"";
+  for(const r of (S.readFixes||[])){
+    if(!r||!r.on||!r.f) continue;
+    s=s.split(r.f).join(r.t??"");
+  }
+  return s;
+}
 async function ttsBytes(text){
   if(!S.ttsKey) throw new Error("APIキーが未入力です");
   if(!text||!text.trim()) throw new Error("読み上げる文がありません");
+  text=readFix(text);
   const url="https://texttospeech.googleapis.com/v1/text:synthesize?key="+encodeURIComponent(S.ttsKey.trim());
   const call=cfg=>fetch(url,{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({input:{text},voice:{languageCode:"ja-JP",name:S.ttsVoice},audioConfig:cfg})});
@@ -1271,6 +1435,26 @@ function openSettings(){
       キーはこのiPhoneの中にだけ保存されます。</p>
   </div>
 
+  <div class="card"><h3>提案者</h3>
+    <div class="g2">
+      <label class="f"><span>部署</span><input data-s="deptName" value="${esc(S.deptName)}" placeholder="工作グループ"></label>
+      <label class="f"><span>代表者名</span><input data-s="presenterName" value="${esc(S.presenterName)}" placeholder="山田"></label>
+    </div>
+    <p class="hint">タイトルページの部署・代表提案者に自動で入り、冒頭のあいさつも自動で作ります。メンバーはページごとにタイトル画面で入力してください。</p>
+  </div>
+
+  <div class="card"><h3>読み方の直し<em></em></h3>
+    <p class="hint" style="margin:0 0 8px">読み上げのときだけ置き換えます。資料に出る文字はそのままです。</p>
+    <div id="rf">${(S.readFixes||[]).map((r,i)=>`
+      <div class="g2" style="grid-template-columns:1fr 1fr auto auto;align-items:center;gap:6px;margin-bottom:6px">
+        <input data-rf="f" data-i="${i}" value="${esc(r.f)}" placeholder="様に">
+        <input data-rf="t" data-i="${i}" value="${esc(r.t)}" placeholder="ように">
+        <button class="sm" data-rfon="${i}" style="flex:0 0 auto;padding:9px 10px;${r.on?"background:var(--go-bg);border-color:var(--go);color:var(--go);font-weight:700":""}">${r.on?"入":"切"}</button>
+        <button class="sm warn" data-rfdel="${i}" style="flex:0 0 auto;padding:9px 10px">×</button>
+      </div>`).join("")}</div>
+    <div class="rowbtns"><button class="sm" id="rf-add">行を追加</button></div>
+  </div>
+
   <div class="card"><h3>チャージ設定</h3>
     <div class="g2">
       <label class="f"><span>機械チャージ<em>円／時</em></span><input type="number" inputmode="numeric" data-s="chargeMachine" value="${S.chargeMachine}"></label>
@@ -1310,7 +1494,6 @@ function openSettings(){
     <div class="g2">
       <label class="f"><span>目標サイズ<em>MB</em></span><input type="number" min="8" max="200" inputmode="numeric" data-s="targetMB" value="${S.targetMB}"></label>
       <label class="f"><span>目安の尺<em>秒</em></span><input type="number" inputmode="numeric" data-s="maxSec" value="${S.maxSec}"></label>
-      <label class="f"><span>目標サイズ<em>MB</em></span><input type="number" min="8" max="200" inputmode="numeric" data-s="targetMB" value="${S.targetMB}"></label>
     </div>
     <div class="g2" style="margin-top:9px">
       <label class="f"><span>読み上げ後の間<em>既定・秒</em></span><input type="number" step="0.1" inputmode="decimal" data-s="pad" value="${S.pad}"></label>
@@ -1342,8 +1525,19 @@ function openSettings(){
     const k=e.dataset.s;
     S[k]=NUM.includes(k)?Number(e.value):e.value;
     if(k==="ttsVoice"||k==="ttsRate"||k==="ttsPitch") audio.clear();
+    // ⑤(a) チャージ単価・稼働月数を変えたら効果ページをその場で作り直す
+    if(k==="chargeMachine"||k==="chargeMan"||k==="months") refreshCost();
+    if(k==="deptName"||k==="presenterName") syncTitle();
     save(); drawGauge();
     if(k==="ttsVoice") openSettings();});
+  // 読み方の直し
+  $("#sheet-in").querySelectorAll("[data-rf]").forEach(e=>e.oninput=()=>{
+    S.readFixes[Number(e.dataset.i)][e.dataset.rf]=e.value; audio.clear(); save();});
+  $("#sheet-in").querySelectorAll("[data-rfon]").forEach(b=>b.onclick=()=>{
+    const r=S.readFixes[Number(b.dataset.rfon)]; r.on=!r.on; audio.clear(); save(); openSettings();});
+  $("#sheet-in").querySelectorAll("[data-rfdel]").forEach(b=>b.onclick=()=>{
+    S.readFixes.splice(Number(b.dataset.rfdel),1); audio.clear(); save(); openSettings();});
+  $("#rf-add").onclick=()=>{S.readFixes.push({f:"",t:"",on:true}); save(); openSettings();};
   $("#sheet-in").querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{
     S.accent=b.dataset.ac; save(); openSettings();});
   $("#sheet-in").querySelectorAll("[data-gen]").forEach(b=>b.onclick=()=>{
@@ -1357,6 +1551,13 @@ function openSettings(){
   $("#s-exp").onclick=exportP;
   $("#s-imp").onclick=()=>$("#pp").click();
   $("#s-rst").onclick=()=>{if(confirm("設定を初期値に戻します。")){const k=S.ttsKey;S={...DEFAULTS,ttsKey:k};save();openSettings();}};
+}
+/* 設定の値が変わったら、効果ページの数式・金額・読み上げを作り直す */
+function refreshCost(){
+  const cp=P.pages.find(p=>p.kind==="cost");
+  if(cp) audio.delete(keyOf(cp));
+  const fx=$("#fx"); if(fx) fx.innerHTML=fxHTML();
+  if(page().kind==="cost"){ const c=$("#pv"); if(c) renderTo(c,page(),0); }
 }
 let testAudio=null;
 function smsg(t,cls){
@@ -1397,7 +1598,7 @@ async function exportP(){
 }
 async function importP(file){
   const j=JSON.parse(await file.text());
-  S={...DEFAULTS,...j.settings,ttsKey:S.ttsKey}; P=j.project; media.clear(); audio.clear();
+  S={...DEFAULTS,...j.settings,ttsKey:S.ttsKey}; P=j.project; media.clear(); audio.clear(); migrate();
   for(const [id,u] of Object.entries(j.media||{})){
     const b=await(await fetch(u)).blob();
     await putB(id,b); await link(id,b,b.type.startsWith("video/")?"video":"image");
