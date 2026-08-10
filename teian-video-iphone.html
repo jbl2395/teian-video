@@ -504,14 +504,22 @@ function dispLabel(p){
   if(p.kind!=="content") return "";
   return p.label===FREE?(p.labelText||"").trim():p.label;
 }
-// 目次に並ぶ見出し（重複は1つに、空と「（見出しなし）」は除く）
+// 目次に並ぶ見出し（重複は1つに、空と「（見出しなし）」は除く）。最後は必ず「効果」
 function tocItems(){
-  return [...new Set(P.pages.filter(p=>p.kind==="content")
-    .map(dispLabel).filter(l=>l&&l!=="（見出しなし）"))];
+  const ls=[...new Set(P.pages.filter(p=>p.kind==="content")
+    .map(dispLabel).filter(l=>l&&l!=="（見出しなし）"))].filter(l=>l!=="効果");
+  ls.push("効果");
+  return ls;
 }
+const ORD=["一つ目","二つ目","三つ目","四つ目","五つ目","六つ目","七つ目","八つ目","九つ目"];
+const ordOf=i=>ORD[i]||`${kanNum(String(i+1))}番目`;
+// 「〜とは」「〜について」で終わる見出しには「について」を足さない
+const aboutOf=l=>/(とは|について|の話|か)$/.test(l)?"":"について";
 function tocSpeech(){
   const ls=tocItems();
-  return ls.length?`本日は、${ls.join("、")}の順にご説明します。`:"";
+  return "以上の内容で発表します。"
+    + ls.map((l,i)=>`${ordOf(i)}、${l}${aboutOf(l)}。`).join("")
+    + "順番に説明していきます。";
 }
 /* ② 代表者・部署から冒頭あいさつを自動で作る */
 function titleSay(){
