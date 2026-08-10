@@ -484,7 +484,7 @@ function costSay(){
   if(k.useH&&k.hDiff) s+=`人の作業は ${n1(num(P.cost.hBefore))}分 から ${n1(num(P.cost.hAfter))}分 に短縮しました。`;
   else if(k.useM&&k.mDiff) s+="短縮しました。";
   s+=`${p}で およそ ${Math.round(k.savedH)} 時間の削減となり、`;
-  s+=`チャージで換算すると ${p} ${Math.round(k.amount).toLocaleString()} 円の低減効果です。`;
+  s+=`チャージで換算すると ${p} ${Math.round(k.amount)} 円の低減効果です。`;
   return s;
 }
 
@@ -1015,6 +1015,46 @@ function head(g,T,lb,W,s){
 
 /* ══════════ 9. Google Cloud TTS ══════════ */
 const AC=()=>(window._ac||=new (window.AudioContext||window.webkitAudioContext)());
+/* 数字の読み間違い対策。25,600 のようなカンマ区切りは TTS が文の切れ目と解釈して
+   「にじゅうご／ろっぴゃく」と分けて読んでしまうため、漢数字に直してから渡す。 */
+const KANSU=["〇","一","二","三","四","五","六","七","八","九"];
+function kan4(g){                       // 4桁までを漢数字に
+  const u=["","十","百","千"], d=String(g).split("");
+  let s="";
+  d.forEach((c,i)=>{
+    const v=+c, pos=d.length-1-i;
+    if(!v) return;
+    s+=(v===1&&pos>0?"":KANSU[v])+u[pos];
+  });
+  return s;
+}
+function kanNum(digits){                // 整数（文字列）を漢数字に
+  let n=digits.replace(/^0+(?=\d)/,"");
+  if(n==="0") return "〇";
+  const unit=["","万","億","兆","京"], out=[];
+  let i=0;
+  while(n.length){
+    const g=n.slice(-4); n=n.slice(0,-4);
+    if(+g) out.unshift(kan4(+g)+unit[i]);
+    i++;
+    if(i>=unit.length) break;
+  }
+  return out.join("")||"〇";
+}
+function numToKana(t){
+  // ¥1,000 のような通貨記号は「〜円」に直してから数字を変換する
+  return (t||"").replace(/[¥￥]\s*(\d[\d,]*(?:\.\d+)?)\s*円?/g,"$1円")
+    .replace(/\d[\d,]*(?:\.\d+)?/g,m=>{
+    const hasComma=m.includes(",");
+    const plain=m.replace(/,/g,"");
+    const [ip,fp]=plain.split(".");
+    // カンマ付き、または5桁以上のときだけ漢数字にする（15分などはそのまま）
+    if(!hasComma&&ip.length<5) return plain;
+    let s=kanNum(ip);
+    if(fp) s+="点"+fp.split("").map(c=>KANSU[+c]).join("");
+    return s;
+  });
+}
 /* ① 読み間違いの補正。字幕はそのまま、TTSへ送る文だけを置き換える */
 function readFix(t){
   let s=t||"";
@@ -1022,7 +1062,7 @@ function readFix(t){
     if(!r||!r.on||!r.f) continue;
     s=s.split(r.f).join(r.t??"");
   }
-  return s;
+  return numToKana(s);
 }
 async function ttsBytes(text){
   if(!S.ttsKey) throw new Error("APIキーが未入力です");
