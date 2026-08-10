@@ -616,7 +616,7 @@ function labelNo(p){
 }
 function headText(p){
   const n=labelNo(p), l=dispLabel(p);
-  return l?l+(n?" "+n:""):"";
+  return l?(n?n+" "+l:l):"";
 }
 const contentNo=p=>{const n=labelNo(p);
   return n?String(n):String(P.pages.filter(x=>x.kind==="content").indexOf(p)+1);};
@@ -629,11 +629,9 @@ function done(p){
 function addPage(){
   const last=P.pages.map(p=>p.kind).lastIndexOf("content");
   const at=last>=0?last+1:firstFixed("cost");
-  const prev=last>=0?P.pages[last]:null;
-  const np=newContent(prev?prev.label:"改善前",prev);
+  const np=newContent(FREE);          // 前のページの見出し・型は引き継がない
   P.pages.splice(at,0,np);
-  cur=at; save(); paint();
-  setTimeout(()=>pick(np,false),150);
+  cur=at; save(); paint();            // 写真の選択は資料画面をタップしたときだけ
 }
 function go(i){
   const n=Math.max(0,Math.min(P.pages.length-1,i));
